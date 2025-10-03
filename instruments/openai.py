@@ -142,21 +142,26 @@ class OpenAIInstrument(BaseInstrument):
         for message in messages:
             role = str(message.get("role", "user"))
             content = message.get("content")
+            content_items: List[Dict[str, Any]] = []
+            content_type = "output_text" if role == "assistant" else "input_text"
+
             if isinstance(content, list):
-                parts: List[Dict[str, Any]] = []
                 for item in content:
                     if isinstance(item, dict):
-                        if item.get("type") == "text" and "text" in item:
-                            parts.append({"type": "text", "text": str(item["text"])})
-                        else:
-                            parts.append({"type": "text", "text": str(item)})
+                        text_value = item.get("text")
+                        if text_value is None:
+                            text_value = str(item)
+                        content_items.append({"type": content_type, "text": str(text_value)})
                     elif item is not None:
-                        parts.append({"type": "text", "text": str(item)})
-                if not parts:
-                    parts.append({"type": "text", "text": ""})
-                formatted.append({"role": role, "content": parts})
-                continue
-            formatted.append({"role": role, "content": [{"type": "text", "text": self._flatten_text_content(content)}]})
+                        content_items.append({"type": content_type, "text": str(item)})
+            else:
+                text_value = self._flatten_text_content(content)
+                content_items.append({"type": content_type, "text": text_value})
+
+            if not content_items:
+                content_items.append({"type": content_type, "text": ""})
+
+            formatted.append({"role": role, "content": content_items})
         return formatted
 
     # Public API ---------------------------------------------------------

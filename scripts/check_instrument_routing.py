@@ -173,10 +173,16 @@ class _FakeChatCompletions:
 
 
 class _FakeResponses:
+    def __init__(self) -> None:
+        self.last_create_kwargs: Optional[Dict[str, Any]] = None
+        self.last_stream_kwargs: Optional[Dict[str, Any]] = None
+
     def create(self, **kwargs: Any):
+        self.last_create_kwargs = dict(kwargs)
         return types.SimpleNamespace(output_text="responses-complete")
 
     def stream(self, **kwargs: Any):
+        self.last_stream_kwargs = dict(kwargs)
         class _Stream:
             def __enter__(self_inner):
                 return self_inner
@@ -233,6 +239,9 @@ def _check_openai_instrument_with_fake_sdk() -> None:
         )
         resp2 = responses_instrument.send_chat([{ "role": "user", "content": "hi" }])
         assert resp2.text == "responses-complete"
+        create_kwargs = responses_instrument._client.responses.last_create_kwargs
+        assert create_kwargs is not None
+        assert create_kwargs["input"][0]["content"][0]["type"] == "input_text"
 
         resp2_stream_chunks: List[str] = []
         resp2_stream = responses_instrument.send_chat(
@@ -242,6 +251,9 @@ def _check_openai_instrument_with_fake_sdk() -> None:
         )
         assert resp2_stream_chunks == ["resp-delta"]
         assert resp2_stream.text in {"resp-delta", "responses-stream-complete"}
+        stream_kwargs = responses_instrument._client.responses.last_stream_kwargs
+        assert stream_kwargs is not None
+        assert stream_kwargs["input"][0]["content"][0]["type"] == "input_text"
     finally:
         if previous is not None:
             sys.modules["openai"] = previous

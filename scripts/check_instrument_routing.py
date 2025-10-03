@@ -119,6 +119,8 @@ def _check_chatclient_openai_rest_payload() -> None:
         assert captured and captured[0]
         assert transport.sent, "Transport should be exercised"
         payload = transport.sent[0]["payload"]
+        prompt = payload.get("prompt")
+        assert isinstance(prompt, str) and "Hello REST" in prompt
         assert "modalities" not in payload
         assert "response_format" not in payload
         assert "stream_options" not in payload
@@ -152,6 +154,8 @@ def _check_chatclient_ollama_payload() -> None:
         assert reply == "transport-response"
         assert transport.sent
         payload = transport.sent[0]["payload"]
+        prompt = payload.get("prompt")
+        assert isinstance(prompt, str) and "Hello Ollama" in prompt
         assert payload["model"] == "qwen/qwen3-1.7b"
         assert payload["stream"] is False
         messages = payload.get("messages")

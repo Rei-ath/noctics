@@ -129,6 +129,12 @@ class OpenAIInstrument(BaseInstrument):
         model_l = self.model.lower()
         return model_l.startswith(("gpt-4.1", "gpt-4o", "gpt-5", "o1"))
 
+    def _responses_supports_temperature(self) -> bool:
+        model_l = self.model.lower()
+        if model_l.startswith("gpt-5"):
+            return False
+        return True
+
     def _format_chat_messages(self, messages: Iterable[Dict[str, Any]]) -> List[Dict[str, str]]:
         formatted: List[Dict[str, str]] = []
         for message in messages:
@@ -193,7 +199,7 @@ class OpenAIInstrument(BaseInstrument):
             "model": self.model,
             "messages": formatted,
         }
-        if temperature is not None:
+        if temperature is not None and self._responses_supports_temperature():
             kwargs["temperature"] = temperature
         if max_tokens_kw is not None:
             kwargs["max_tokens"] = max_tokens_kw
@@ -232,7 +238,7 @@ class OpenAIInstrument(BaseInstrument):
             "model": self.model,
             "input": formatted,
         }
-        if temperature is not None:
+        if temperature is not None and self._responses_supports_temperature():
             kwargs["temperature"] = temperature
         if max_tokens and max_tokens > 0:
             kwargs["max_output_tokens"] = max_tokens

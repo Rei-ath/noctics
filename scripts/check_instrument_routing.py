@@ -237,16 +237,21 @@ def _check_openai_instrument_with_fake_sdk() -> None:
             model="gpt-4o",
             api_key="sk-test",
         )
-        resp2 = responses_instrument.send_chat([{ "role": "user", "content": "hi" }])
+        resp2 = responses_instrument.send_chat(
+            [{ "role": "user", "content": "hi" }],
+            temperature=0.5,
+        )
         assert resp2.text == "responses-complete"
         create_kwargs = responses_instrument._client.responses.last_create_kwargs
         assert create_kwargs is not None
         assert create_kwargs["input"][0]["content"][0]["type"] == "input_text"
+        assert "temperature" in create_kwargs
 
         resp2_stream_chunks: List[str] = []
         resp2_stream = responses_instrument.send_chat(
             [{"role": "user", "content": "hi" }],
             stream=True,
+            temperature=0.5,
             on_chunk=resp2_stream_chunks.append,
         )
         assert resp2_stream_chunks == ["resp-delta"]
@@ -254,6 +259,17 @@ def _check_openai_instrument_with_fake_sdk() -> None:
         stream_kwargs = responses_instrument._client.responses.last_stream_kwargs
         assert stream_kwargs is not None
         assert stream_kwargs["input"][0]["content"][0]["type"] == "input_text"
+        assert "temperature" in stream_kwargs
+
+        gpt5_instrument = OpenAIInstrument(
+            url="https://api.openai.com/v1/chat/completions",
+            model="gpt-5.0-preview",
+            api_key="sk-test",
+        )
+        gpt5_instrument.send_chat([{ "role": "user", "content": "hi" }], temperature=0.5)
+        gpt5_kwargs = gpt5_instrument._client.responses.last_create_kwargs
+        assert gpt5_kwargs is not None
+        assert "temperature" not in gpt5_kwargs
     finally:
         if previous is not None:
             sys.modules["openai"] = previous

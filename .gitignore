@@ -1,0 +1,48 @@
+ # Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+.venv/
+jenv/
+.env
+.env.edge
+.env.ejer
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.whl
+
+# PyInstaller
+*.spec
+.pyi-build/
+
+# Editor and IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+
+# Logs and databases
+*.log
+*.sqlite3
+*.db
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+
+# Downloaded artifacts
+.ollama-download/
+
+# Miscellaneous
+*.pyc

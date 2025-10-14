@@ -12,6 +12,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "core"))
 
+import os
+from pathlib import Path
+
+os.environ.setdefault("NOCTICS_MEMORY_HOME", str(Path(__file__).resolve().parents[1] / "memory"))
+
 from central.core.client import ChatClient
 from instruments.openai import OpenAIInstrument
 

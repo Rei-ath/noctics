@@ -39,13 +39,13 @@ _primary_alias_file = _runtime_meta / "primary_alias.txt"
 _lite_alias_file = _runtime_meta / "lite_alias.txt"
 
 if _primary_alias_file.exists():
-    os.environ.setdefault("CENTRAL_LLM_MODEL", _primary_alias_file.read_text().strip() or "centi-noctics:latest")
+    os.environ.setdefault("CENTRAL_LLM_MODEL", _primary_alias_file.read_text().strip() or "centi-nox")
 else:
-    _alias_manifest = _ollama_models / "manifests" / "registry.ollama.ai" / "library" / "centi-noctics" / "latest"
+    _alias_manifest = _ollama_models / "manifests" / "registry.ollama.ai" / "library" / "centi-nox" / "latest"
     if _alias_manifest.exists():
-        os.environ.setdefault("CENTRAL_LLM_MODEL", "centi-noctics:latest")
+        os.environ.setdefault("CENTRAL_LLM_MODEL", "centi-nox")
     else:
-        os.environ.setdefault("CENTRAL_LLM_MODEL", "centi-noctics:latest")
+        os.environ.setdefault("CENTRAL_LLM_MODEL", "centi-nox")
 
 if _lite_alias_file.exists():
     _lite_value = _lite_alias_file.read_text().strip()

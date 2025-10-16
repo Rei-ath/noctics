@@ -7,7 +7,7 @@ DIST_DIR="$ROOT_DIR/dist"
 BUILD_DIR="$ROOT_DIR/.pyi-build"
 MODEL_POINTER_FILE="$ROOT_DIR/assets/ollama/models/.active_model"
 MODEL_PATH="${MODEL_PATH:-}"
-DEFAULT_MODEL_NAME="micro-noctics"
+DEFAULT_MODEL_NAME="micro-nox"
 ENV_FILE="$ROOT_DIR/.env.ejer"
 
 if [[ -z "$MODEL_PATH" ]]; then
@@ -52,7 +52,7 @@ if ! command -v pyinstaller >/dev/null 2>&1; then
 fi
 
 mkdir -p "$DIST_DIR" "$BUILD_DIR"
-rm -rf "$DIST_DIR/micro-noctics"
+rm -rf "$DIST_DIR/micro-nox"
 
 MODEL_FILENAME="$(basename "$MODEL_PATH")"
 NOCTICS_MODEL_PATH="$(cd "$(dirname "$MODEL_PATH")" && pwd)/$MODEL_FILENAME"
@@ -67,4 +67,4 @@ pyinstaller "$SPEC_FILE" \
   --clean \
   --noconfirm
 
-echo "[build_ejer] Micro build available under $DIST_DIR/micro-noctics" >&2
+echo "[build_ejer] Micro build available under $DIST_DIR/micro-nox" >&2

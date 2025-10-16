@@ -242,7 +242,7 @@ def build_review_prompt(cases: List[CaseResult]) -> List[Dict[str, str]]:
 def parse_args(argv: List[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser("orchestrate_eval")
     p.add_argument("--target-url", default=os.getenv("CENTRAL_LLM_URL", ChatClient.DEFAULT_URL))
-    p.add_argument("--target-model", default=os.getenv("CENTRAL_LLM_MODEL", "centi-noctics:latest"))
+    p.add_argument("--target-model", default=os.getenv("CENTRAL_LLM_MODEL", "centi-nox"))
     p.add_argument("--target-api-key", default=(os.getenv("CENTRAL_LLM_API_KEY") or os.getenv("OPENAI_API_KEY")))
     p.add_argument("--instrument-model", default=os.getenv("ORCH_INSTRUMENT_MODEL", "gpt-4o"))
     p.add_argument("--review-model", default=os.getenv("ORCH_REVIEW_MODEL", "gpt-5"))

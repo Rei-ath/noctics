@@ -50,7 +50,7 @@ the desired commit:
    `centi-noctics:latest`.
 2. To stage additional aliases (for example the nano/micro/milli tiers), set the
    `MODEL_SPECS` environment variable before running the script, e.g.
-   `MODEL_SPECS="qwen3:8b=>centi-noctics qwen3:1.7b=>micro-noctics qwen3:4b=>milli-noctics qwen3:0.6b=>nano-noctics"`.
+  `MODEL_SPECS="qwen3:8b=>centi-nox qwen3:1.7b=>micro-nox qwen3:4b=>milli-nox qwen3:0.6b=>nano-nox"`.
    Re-run the build once the models are pulled. You can skip automatic
    downloads by setting `NOCTICS_SKIP_ASSET_PREP=1` if the assets are already in
    place.
@@ -58,14 +58,14 @@ the desired commit:
 Optional scale-specific bundles:
 
 ```bash
-./scripts/build_edge.sh   # dist/centi-noctics/  (bundles Qwen3 8B)
-./scripts/build_ejer.sh   # dist/micro-noctics/  (bundles Qwen3 1.7B)
+./scripts/build_edge.sh   # dist/centi-nox/  (bundles Qwen3 8B)
+./scripts/build_ejer.sh   # dist/micro-nox/  (bundles Qwen3 1.7B)
 ```
 
-| Scale  | Bundle Directory       | Packaged Alias         | Upstream Model |
-|--------|------------------------|------------------------|----------------|
-| micro  | `dist/micro-noctics/`  | `micro-noctics:latest` | `qwen3:1.7b`   |
-| centi  | `dist/centi-noctics/`  | `centi-noctics:latest` | `qwen3:8b`     |
+| Scale  | Bundle Directory    | Packaged Alias   | Upstream Model |
+|--------|---------------------|------------------|----------------|
+| micro  | `dist/micro-nox/`   | `micro-nox`      | `qwen3:1.7b`   |
+| centi  | `dist/centi-nox/`   | `centi-nox`      | `qwen3:8b`     |
 
 The PyInstaller bundle is emitted to `dist/noctics-core/`. Package or sign that
 folder according to the distribution channel (zip, installer, private PyPI
@@ -81,7 +81,7 @@ export OLLAMA_MODELS="$PWD/dist/noctics-core/_internal/resources/ollama/models"
 ./dist/noctics-core/_internal/resources/ollama/bin/ollama serve --host 127.0.0.1:12570 &
 OLLAMA_PID=$!
 curl -s http://127.0.0.1:12570/api/version
-echo "Hello" | ./dist/noctics-core/_internal/resources/ollama/bin/ollama run centi-noctics:latest
+echo "Hello" | ./dist/noctics-core/_internal/resources/ollama/bin/ollama run centi-nox
 kill $OLLAMA_PID
 rm -rf "$OLLAMA_HOME"
 ```
@@ -96,7 +96,7 @@ rm -rf "$OLLAMA_HOME"
   - Prepare targets JSON (example):
     ```json
     [
-      {"name": "local-centi", "url": "http://127.0.0.1:11434/api/generate", "model": "centi-noctics:latest"},
+      {"name": "local-centi", "url": "http://127.0.0.1:11434/api/generate", "model": "centi-nox"},
       {"name": "openai", "url": "https://api.openai.com/v1/chat/completions", "model": "gpt-4o", "api_key": "${OPENAI_API_KEY}"}
     ]
     ```

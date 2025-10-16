@@ -10,7 +10,7 @@ Measures per-target:
 
 Targets JSON format (example):
 [
-  {"name": "local-centi", "url": "http://127.0.0.1:11434/api/generate", "model": "centi-noctics:latest"},
+  {"name": "local-centi", "url": "http://127.0.0.1:11434/api/generate", "model": "centi-nox"},
   {"name": "openai", "url": "https://api.openai.com/v1/chat/completions", "model": "gpt-4o", "api_key": "${OPENAI_API_KEY}"}
 ]
 """
@@ -110,7 +110,7 @@ def load_targets(path: Optional[str]) -> List[Target]:
     if not path:
         # Default to current env configured target
         url = os.getenv("CENTRAL_LLM_URL", ChatClient.DEFAULT_URL)
-        model = os.getenv("CENTRAL_LLM_MODEL", "centi-noctics:latest")
+        model = os.getenv("CENTRAL_LLM_MODEL", "centi-nox")
         return [Target(name="env", url=url, model=model, api_key=(os.getenv("CENTRAL_LLM_API_KEY") or os.getenv("OPENAI_API_KEY"))) ]
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
     items: List[Target] = []

@@ -6,7 +6,7 @@ SPEC_FILE="$ROOT_DIR/release/noctics_release.spec"
 DIST_DIR="$ROOT_DIR/dist"
 BUILD_DIR="$ROOT_DIR/.pyi-build"
 MODEL_PATH="${MODEL_PATH:-}"
-DEFAULT_MODEL_NAME="centi-noctics"
+DEFAULT_MODEL_NAME="centi-nox"
 PREPARE_ASSETS_SCRIPT="$ROOT_DIR/scripts/prepare_assets.sh"
 MODEL_POINTER_FILE="$ROOT_DIR/assets/ollama/models/.active_model"
 

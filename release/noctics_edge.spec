@@ -119,7 +119,7 @@ exe = EXE(
     pyz,
     analysis.scripts,
     [],
-    name="centi-noctics",
+    name="centi-nox",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -141,5 +141,5 @@ COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="centi-noctics",
+    name="centi-nox",
 )

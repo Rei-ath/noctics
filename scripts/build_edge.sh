@@ -7,7 +7,7 @@ DIST_DIR="$ROOT_DIR/dist"
 BUILD_DIR="$ROOT_DIR/.pyi-build"
 MODEL_POINTER_FILE="$ROOT_DIR/assets/ollama/models/.active_model"
 MODEL_PATH="${MODEL_PATH:-}"
-DEFAULT_MODEL_NAME="centi-noctics"
+DEFAULT_MODEL_NAME="centi-nox"
 ENV_FILE="$ROOT_DIR/.env.edge"
 
 if [[ -z "$MODEL_PATH" ]]; then
@@ -52,7 +52,7 @@ if ! command -v pyinstaller >/dev/null 2>&1; then
 fi
 
 mkdir -p "$DIST_DIR" "$BUILD_DIR"
-rm -rf "$DIST_DIR/centi-noctics"
+rm -rf "$DIST_DIR/centi-nox"
 
 MODEL_FILENAME="$(basename "$MODEL_PATH")"
 NOCTICS_MODEL_PATH="$(cd "$(dirname "$MODEL_PATH")" && pwd)/$MODEL_FILENAME"
@@ -67,4 +67,4 @@ pyinstaller "$SPEC_FILE" \
   --clean \
   --noconfirm
 
-echo "[build_edge] Centi build available under $DIST_DIR/centi-noctics" >&2
+echo "[build_edge] Centi build available under $DIST_DIR/centi-nox" >&2

@@ -119,7 +119,7 @@ exe = EXE(
     pyz,
     analysis.scripts,
     [],
-    name="micro-noctics",
+    name="micro-nox",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -141,5 +141,5 @@ COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="micro-noctics",
+    name="micro-nox",
 )

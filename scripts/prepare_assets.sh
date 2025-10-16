@@ -15,7 +15,7 @@ LAYMA_OLLAMA_URL="https://github.com/Rei-ath/LayMA/raw/main/ollama"
 
 # Default model plan: map Qwen3 tiers onto Noctics scale aliases. Override via
 # MODEL_SPECS="src=>alias src=>alias ...".
-MODEL_SPECS=${MODEL_SPECS:-"qwen3:8b=>centi-noctics qwen3:1.7b=>micro-noctics qwen3:4b=>milli-noctics qwen3:0.6b=>nano-noctics"}
+MODEL_SPECS=${MODEL_SPECS:-"qwen3:8b=>centi-nox qwen3:1.7b=>micro-nox qwen3:4b=>milli-nox qwen3:0.6b=>nano-nox"}
 
 log() {
   echo "[prepare_assets] $*" >&2

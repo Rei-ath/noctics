@@ -7,7 +7,7 @@ DIST_DIR="$ROOT_DIR/dist"
 BUILD_DIR="$ROOT_DIR/.pyi-build"
 MODEL_POINTER_FILE="$ROOT_DIR/assets/ollama/models/.active_model"
 MODEL_PATH="${MODEL_PATH:-}"
-DEFAULT_MODEL_NAME="centi-noctics"
+DEFAULT_MODEL_NAME="centi-nox"
 
 if [[ -z "$MODEL_PATH" ]]; then
   MODEL_PATH="${1:-}"

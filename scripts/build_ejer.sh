@@ -52,7 +52,7 @@ if ! command -v pyinstaller >/dev/null 2>&1; then
 fi
 
 mkdir -p "$DIST_DIR" "$BUILD_DIR"
-rm -rf "$DIST_DIR/noctics-ejer"
+rm -rf "$DIST_DIR/micro-noctics"
 
 MODEL_FILENAME="$(basename "$MODEL_PATH")"
 NOCTICS_MODEL_PATH="$(cd "$(dirname "$MODEL_PATH")" && pwd)/$MODEL_FILENAME"
@@ -67,4 +67,4 @@ pyinstaller "$SPEC_FILE" \
   --clean \
   --noconfirm
 
-echo "[build_ejer] Ejer build available under $DIST_DIR/noctics-ejer" >&2
+echo "[build_ejer] Micro build available under $DIST_DIR/micro-noctics" >&2

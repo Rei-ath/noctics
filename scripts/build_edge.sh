@@ -52,7 +52,7 @@ if ! command -v pyinstaller >/dev/null 2>&1; then
 fi
 
 mkdir -p "$DIST_DIR" "$BUILD_DIR"
-rm -rf "$DIST_DIR/noctics-centi"
+rm -rf "$DIST_DIR/centi-noctics"
 
 MODEL_FILENAME="$(basename "$MODEL_PATH")"
 NOCTICS_MODEL_PATH="$(cd "$(dirname "$MODEL_PATH")" && pwd)/$MODEL_FILENAME"
@@ -67,4 +67,4 @@ pyinstaller "$SPEC_FILE" \
   --clean \
   --noconfirm
 
-echo "[build_edge] Centi build available under $DIST_DIR/noctics-centi" >&2
+echo "[build_edge] Centi build available under $DIST_DIR/centi-noctics" >&2

@@ -55,6 +55,13 @@ the desired commit:
    downloads by setting `NOCTICS_SKIP_ASSET_PREP=1` if the assets are already in
    place.
 
+Optional scale-specific bundles:
+
+```bash
+./scripts/build_edge.sh   # dist/centi-noctics/
+./scripts/build_ejer.sh   # dist/micro-noctics/
+```
+
 The PyInstaller bundle is emitted to `dist/noctics-core/`. Package or sign that
 folder according to the distribution channel (zip, installer, private PyPI
 wheel, etc.). Commit the updated submodule pointer and any packaging metadata

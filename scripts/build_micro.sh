@@ -2,13 +2,13 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SPEC_FILE="$ROOT_DIR/release/noctics_ejer.spec"
+SPEC_FILE="$ROOT_DIR/release/noctics_micro.spec"
 DIST_DIR="$ROOT_DIR/dist"
 BUILD_DIR="$ROOT_DIR/.pyi-build"
 MODEL_POINTER_FILE="$ROOT_DIR/assets/ollama/models/.active_model"
 MODEL_PATH="${MODEL_PATH:-}"
 DEFAULT_MODEL_NAME="micro-nox"
-ENV_FILE="$ROOT_DIR/.env.ejer"
+ENV_FILE="$ROOT_DIR/.env.micro"
 
 if [[ -z "$MODEL_PATH" ]]; then
   MODEL_PATH="${1:-}"
@@ -18,11 +18,11 @@ if [[ -z "$MODEL_PATH" ]]; then
   TARGET_MODEL_NAME="${MODEL_NAME_OVERRIDE:-$DEFAULT_MODEL_NAME}"
   if [[ "${NOCTICS_SKIP_ASSET_PREP:-0}" != "1" ]]; then
     if [[ -f "$MODEL_POINTER_FILE" && -d "$ROOT_DIR/assets/ollama/models/blobs" ]]; then
-      echo "[build_ejer] Reusing existing model assets under assets/ollama/models" >&2
+      echo "[build_micro] Reusing existing model assets under assets/ollama/models" >&2
     else
       PREP_SCRIPT="$ROOT_DIR/scripts/prepare_assets.sh"
       if [[ ! -x "$PREP_SCRIPT" ]]; then
-        echo "[build_ejer] Asset prep script missing: $PREP_SCRIPT" >&2
+        echo "[build_micro] Asset prep script missing: $PREP_SCRIPT" >&2
         exit 1
       fi
       MODEL_NAME="$TARGET_MODEL_NAME" "$PREP_SCRIPT"
@@ -32,7 +32,7 @@ if [[ -z "$MODEL_PATH" ]]; then
   if [[ -z "$MODEL_PATH" && -f "$MODEL_POINTER_FILE" ]]; then
     MODEL_PATH="$(<"$MODEL_POINTER_FILE")"
   elif [[ -z "$MODEL_PATH" ]]; then
-    echo "[build_ejer] Unable to determine model path; run prepare_assets first" >&2
+    echo "[build_micro] Unable to determine model path; run prepare_assets first" >&2
     exit 1
   fi
 
@@ -42,17 +42,17 @@ if [[ -z "$MODEL_PATH" ]]; then
 fi
 
 if [[ ! -f "$MODEL_PATH" ]]; then
-  echo "[build_ejer] MODEL_PATH does not exist: $MODEL_PATH" >&2
+  echo "[build_micro] MODEL_PATH does not exist: $MODEL_PATH" >&2
   exit 1
 fi
 
 if ! command -v pyinstaller >/dev/null 2>&1; then
-  echo "[build_ejer] pyinstaller not found on PATH" >&2
+  echo "[build_micro] pyinstaller not found on PATH" >&2
   exit 1
 fi
 
 mkdir -p "$DIST_DIR" "$BUILD_DIR"
-rm -rf "$DIST_DIR/micro-nox"
+rm -rf "$DIST_DIR/micro-noctics"
 
 MODEL_FILENAME="$(basename "$MODEL_PATH")"
 NOCTICS_MODEL_PATH="$(cd "$(dirname "$MODEL_PATH")" && pwd)/$MODEL_FILENAME"
@@ -67,4 +67,4 @@ pyinstaller "$SPEC_FILE" \
   --clean \
   --noconfirm
 
-echo "[build_ejer] Micro build available under $DIST_DIR/micro-nox" >&2
+echo "[build_micro] Micro build available under $DIST_DIR/micro-noctics" >&2

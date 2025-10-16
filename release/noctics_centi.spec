@@ -1,4 +1,4 @@
-# PyInstaller spec for the micro scale build (Qwen3 1.7B default)
+# PyInstaller spec for the centi scale build (Qwen3 8B default)
 
 import os
 import sys
@@ -61,7 +61,7 @@ for extra_dir in ("config", "datasets", "third_party", "models", "memory"):
 
 DATAS.extend(MODEL_FILES)
 
-env_override = os.environ.get("NOCTICS_ENV_FILE", ROOT / ".env.ejer")
+env_override = os.environ.get("NOCTICS_ENV_FILE", ROOT / ".env.centi")
 ENV_FILE = Path(env_override).expanduser()
 if ENV_FILE.exists():
     DATAS.append((str(ENV_FILE), "resources/env/.env"))
@@ -119,7 +119,7 @@ exe = EXE(
     pyz,
     analysis.scripts,
     [],
-    name="micro-nox",
+    name="centi-noctics",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -141,5 +141,5 @@ COLLECT(
     strip=False,
     upx=False,
     upx_exclude=[],
-    name="micro-nox",
+    name="centi-noctics",
 )

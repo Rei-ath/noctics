@@ -47,7 +47,7 @@ the desired commit:
 1. Run `./scripts/build_release.sh`. By default it downloads the LayMA Ollama
    runtime and stages the Qwen3 cache under
    `assets/ollama/models/`, exposing it inside the bundle as
-   `centi-noctics:latest`.
+   `centi-nox`.
 2. To stage additional aliases (for example the nano/micro/milli tiers), set the
    `MODEL_SPECS` environment variable before running the script, e.g.
   `MODEL_SPECS="qwen3:8b=>centi-nox qwen3:1.7b=>micro-nox qwen3:4b=>milli-nox qwen3:0.6b=>nano-nox"`.
@@ -58,14 +58,14 @@ the desired commit:
 Optional scale-specific bundles:
 
 ```bash
-./scripts/build_edge.sh   # dist/centi-nox/  (bundles Qwen3 8B)
-./scripts/build_ejer.sh   # dist/micro-nox/  (bundles Qwen3 1.7B)
+./scripts/build_centi.sh   # dist/centi-noctics/  (bundles Qwen3 8B)
+./scripts/build_micro.sh   # dist/micro-noctics/  (bundles Qwen3 1.7B)
 ```
 
 | Scale  | Bundle Directory    | Packaged Alias   | Upstream Model |
 |--------|---------------------|------------------|----------------|
-| micro  | `dist/micro-nox/`   | `micro-nox`      | `qwen3:1.7b`   |
-| centi  | `dist/centi-nox/`   | `centi-nox`      | `qwen3:8b`     |
+| micro  | `dist/micro-noctics/`   | `micro-nox`      | `qwen3:1.7b`   |
+| centi  | `dist/centi-noctics/`   | `centi-nox`      | `qwen3:8b`     |
 
 The PyInstaller bundle is emitted to `dist/noctics-core/`. Package or sign that
 folder according to the distribution channel (zip, installer, private PyPI

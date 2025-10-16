@@ -7,8 +7,8 @@ __pycache__/
 .venv/
 jenv/
 .env
-.env.edge
-.env.ejer
+.env.centi
+.env.micro
 
 # Distribution / packaging
 build/
@@ -43,6 +43,7 @@ Thumbs.db
 
 # Downloaded artifacts
 .ollama-download/
+hj0.logs/
 
 # Miscellaneous
 *.pyc

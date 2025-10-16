@@ -43,7 +43,12 @@ Thumbs.db
 
 # Downloaded artifacts
 .ollama-download/
+assets/ollama/models/
+data/openai_chat_exports/
 hj0.logs/
+
+# Build outputs
+experiments/*/target/
 
 # Miscellaneous
 *.pyc

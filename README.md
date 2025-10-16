@@ -58,9 +58,14 @@ the desired commit:
 Optional scale-specific bundles:
 
 ```bash
-./scripts/build_edge.sh   # dist/centi-noctics/
-./scripts/build_ejer.sh   # dist/micro-noctics/
+./scripts/build_edge.sh   # dist/centi-noctics/  (bundles Qwen3 8B)
+./scripts/build_ejer.sh   # dist/micro-noctics/  (bundles Qwen3 1.7B)
 ```
+
+| Scale  | Bundle Directory       | Packaged Alias         | Upstream Model |
+|--------|------------------------|------------------------|----------------|
+| micro  | `dist/micro-noctics/`  | `micro-noctics:latest` | `qwen3:1.7b`   |
+| centi  | `dist/centi-noctics/`  | `centi-noctics:latest` | `qwen3:8b`     |
 
 The PyInstaller bundle is emitted to `dist/noctics-core/`. Package or sign that
 folder according to the distribution channel (zip, installer, private PyPI

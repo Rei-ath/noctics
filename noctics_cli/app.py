@@ -33,6 +33,7 @@ if str(_CORE_ROOT) not in sys.path:
 from central.colors import color
 from central.core import ChatClient, DEFAULT_URL as CORE_DEFAULT_URL, build_payload, strip_chain_of_thought
 from central.core import clean_public_reply
+from central.persona import resolve_persona, render_system_prompt
 from central.runtime_identity import (
     RuntimeIdentity as _RuntimeIdentity,
     resolve_runtime_identity as _resolve_runtime_identity,
@@ -640,6 +641,7 @@ def main(argv: List[str]) -> int:
     load_local_dotenv(Path(__file__).resolve().parent)
 
     args = parse_args(argv)
+    persona = resolve_persona(args.model)
 
     if getattr(args, "dev", False):
         dev_passphrase = resolve_dev_passphrase()
@@ -686,6 +688,9 @@ def main(argv: List[str]) -> int:
     hardware_info = hardware_summary()
     hardware_line = f"Hardware context: {hardware_info}"
     instrument_auto_line = f"Instrument automation: {'ON' if instrument_auto_on else 'OFF'}"
+    persona_line = (
+        f"Central persona: {persona.central_name} ({persona.scale_label}) — model target {persona.model_target}"
+    )
 
     if args.stream is None:
         if interactive:
@@ -768,6 +773,9 @@ def main(argv: List[str]) -> int:
             elif default_path.exists():
                 args.system = default_path.read_text(encoding="utf-8").strip()
 
+    if args.system:
+        args.system = render_system_prompt(args.system, persona)
+
     session_path_to_adopt: Optional[Path] = None
     messages: List[Dict[str, Any]] = []
     if args.messages_file:
@@ -775,6 +783,10 @@ def main(argv: List[str]) -> int:
             messages = json.load(f)
             if not isinstance(messages, list):
                 raise SystemExit("--messages must point to a JSON array of messages")
+        for msg in messages:
+            if isinstance(msg, dict) and msg.get("role") == "system":
+                content = str(msg.get("content") or "")
+                msg["content"] = render_system_prompt(content, persona)
     else:
         if args.sessions_load:
             path: Optional[Path] = None
@@ -797,6 +809,9 @@ def main(argv: List[str]) -> int:
                 sys_msgs = [m for m in messages if m.get("role") == "system"]
                 if sys_msgs:
                     args.system = sys_msgs[0].get("content")
+                    if args.system:
+                        args.system = render_system_prompt(str(args.system), persona)
+                        sys_msgs[0]["content"] = args.system
             session_path_to_adopt = path
             print(color(f"Loaded session: {path.stem}", fg="yellow"))
         elif interactive and not args.messages_file:
@@ -810,6 +825,9 @@ def main(argv: List[str]) -> int:
                 sys_msgs = [m for m in messages if m.get("role") == "system"]
                 if sys_msgs:
                     args.system = sys_msgs[0].get("content")
+                    if args.system:
+                        args.system = render_system_prompt(str(args.system), persona)
+                        sys_msgs[0]["content"] = args.system
         if not messages and args.system:
             messages.append({"role": "system", "content": args.system})
 
@@ -851,6 +869,30 @@ def main(argv: List[str]) -> int:
                     args.system = (content + ("\n\n" if content else "") + identity_line).strip()
             else:
                 args.system = identity_line
+
+    persona_inserted = False
+    for msg in messages:
+        if isinstance(msg, dict) and msg.get("role") == "system" and persona_line in str(msg.get("content") or ""):
+            persona_inserted = True
+            break
+    if not persona_inserted:
+        inserted = False
+        for i in range(len(messages) - 1, -1, -1):
+            msg = messages[i]
+            if isinstance(msg, dict) and msg.get("role") == "system":
+                content = str(msg.get("content") or "").strip()
+                content = (content + ("\n\n" if content else "") + persona_line).strip()
+                messages[i]["content"] = content
+                inserted = True
+                break
+        if not inserted:
+            messages.insert(0, {"role": "system", "content": persona_line})
+        if args.system:
+            content = args.system.strip()
+            if persona_line not in content:
+                args.system = (content + ("\n\n" if content else "") + persona_line).strip()
+        else:
+            args.system = persona_line
 
     hardware_inserted = False
     for msg in messages:
@@ -961,7 +1003,7 @@ def main(argv: List[str]) -> int:
         roster = roster_display[:38]
         session_info = cmd_list_sessions()
         session_count = len(session_info)
-        title = "n0x"
+        header = persona.central_name
         logo_lines = [
             " _   _   ___    __  __  ",
             "| \\ | | / _ \\  \\ \\/ /  ",
@@ -971,7 +1013,7 @@ def main(argv: List[str]) -> int:
         ]
         status_lines = [
             color("╔════════════════════════════════════════════════════════╗", fg="cyan", bold=True),
-            color(f"║ {title.center(52)} ║", fg="cyan", bold=True),
+            color(f"║ {header.center(52)} ║", fg="cyan", bold=True),
             color("╠════════════════════════════════════════════════════════╣", fg="cyan"),
         ]
         status_lines.extend(
@@ -986,11 +1028,20 @@ def main(argv: List[str]) -> int:
             color(f"║ Runtime Source : {runtime_meta['source']:<38}║", fg="cyan"),
             color(f"║ Endpoint       : {runtime_meta['endpoint']:<38}║", fg="cyan"),
             color(f"║ Model          : {runtime_meta['model']:<38}║", fg="cyan"),
+            color(f"║ Model Target   : {persona.model_target[:38]:<38}║", fg="cyan"),
+            color(f"║ Persona        : {persona.central_name[:38]:<38}║", fg="cyan"),
+            color(f"║ Scale          : {persona.scale_label[:38]:<38}║", fg="cyan"),
+            color(f"║ Variant        : {persona.variant_name[:38]:<38}║", fg="cyan"),
+            color(f"║ Tagline        : {persona.tagline[:38]:<38}║", fg="cyan"),
             color(f"║ Instrument Auto    : {automation:<38}║", fg="cyan"),
             color(f"║ Instrument Roster  : {roster_brief:<38}║", fg="cyan"),
             color(f"║ Sessions Saved : {session_count:<38}║", fg="cyan"),
             color("╠════════════════════════════════════════════════════════╣", fg="cyan"),
-            color("║        Personal Intelligence Kernel — Noctics          ║", fg="cyan", bold=True),
+            color(
+                f"║ {(persona.central_name.upper() + ' · ' + persona.variant_display).center(52)} ║",
+                fg="cyan",
+                bold=True,
+            ),
             color("╚════════════════════════════════════════════════════════╝", fg="cyan", bold=True),
         ])
 
@@ -1054,10 +1105,38 @@ def main(argv: List[str]) -> int:
             continue
 
         client = client_candidate
+        persona = client.persona
         args.url = candidate.url
         args.model = candidate.model
         args.api_key = candidate.api_key
         update_runtime_meta(candidate.url, candidate.model, candidate.source)
+
+        persona_line = (
+            f"Central persona: {persona.central_name} ({persona.scale_label}) — model target {persona.model_target}"
+        )
+        if args.system:
+            content = args.system.strip()
+            if persona_line not in content:
+                args.system = (content + ("\n\n" if content else "") + persona_line).strip()
+        else:
+            args.system = persona_line
+
+        inserted = False
+        for i in range(len(messages) - 1, -1, -1):
+            msg = messages[i]
+            if isinstance(msg, dict) and msg.get("role") == "system":
+                content = str(msg.get("content") or "").strip()
+                if persona_line in content:
+                    inserted = True
+                    break
+                content = (content + ("\n\n" if content else "") + persona_line).strip()
+                messages[i]["content"] = content
+                inserted = True
+                break
+        if not inserted:
+            messages.insert(0, {"role": "system", "content": persona_line})
+        client.set_messages(messages)
+
         instrument_info = client.describe_target()
         instrument_name = instrument_info.get("instrument")
         instrument_warning = instrument_info.get("instrument_warning")
@@ -1090,6 +1169,7 @@ def main(argv: List[str]) -> int:
 
     if interactive:
         print_status_block()
+        print(color(persona.summary_line, fg="cyan"))
 
     def adopt_session(path: Path) -> None:
         nonlocal title_confirmed, first_prompt_handled
@@ -1520,7 +1600,8 @@ def main(argv: List[str]) -> int:
 
             instrument_suffix = f" [{args.instrument}]" if args.instrument else ""
             prompt_text = prepare_first_prompt_text(prompt, allow_interactive=True)
-            print("\n" + color(f"Noctics Central{instrument_suffix}:", fg="#ffefff", bold=True) + " ", end="", flush=True)
+            prompt_label = f"{persona.central_name}{instrument_suffix}:"
+            print("\n" + color(prompt_label, fg="#ffefff", bold=True) + " ", end="", flush=True)
             one_turn(prompt_text)
     except KeyboardInterrupt:
         print("\n" + color("Interrupted.", fg="yellow"))

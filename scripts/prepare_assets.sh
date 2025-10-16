@@ -13,9 +13,9 @@ PRIMARY_ALIAS_FILE="$RUNTIME_DIR/primary_alias.txt"
 LITE_ALIAS_FILE="$RUNTIME_DIR/lite_alias.txt"
 LAYMA_OLLAMA_URL="https://github.com/Rei-ath/LayMA/raw/main/ollama"
 
-# Default model plan: ship Gemma3 full as `noctics-edge` and Gemma3 1B as
-# `edge-lite`. Override via MODEL_SPECS="src=>alias src=>alias ...".
-MODEL_SPECS=${MODEL_SPECS:-"gemma3:latest=>noctics-edge"}
+# Default model plan: map Qwen3 tiers onto Noctics scale aliases. Override via
+# MODEL_SPECS="src=>alias src=>alias ...".
+MODEL_SPECS=${MODEL_SPECS:-"qwen3:8b=>centi-noctics qwen3:1.7b=>micro-noctics qwen3:4b=>milli-noctics qwen3:0.6b=>nano-noctics"}
 
 log() {
   echo "[prepare_assets] $*" >&2

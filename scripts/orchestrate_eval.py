@@ -242,7 +242,7 @@ def build_review_prompt(cases: List[CaseResult]) -> List[Dict[str, str]]:
 def parse_args(argv: List[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser("orchestrate_eval")
     p.add_argument("--target-url", default=os.getenv("CENTRAL_LLM_URL", ChatClient.DEFAULT_URL))
-    p.add_argument("--target-model", default=os.getenv("CENTRAL_LLM_MODEL", "noctics-edge:latest"))
+    p.add_argument("--target-model", default=os.getenv("CENTRAL_LLM_MODEL", "centi-noctics:latest"))
     p.add_argument("--target-api-key", default=(os.getenv("CENTRAL_LLM_API_KEY") or os.getenv("OPENAI_API_KEY")))
     p.add_argument("--instrument-model", default=os.getenv("ORCH_INSTRUMENT_MODEL", "gpt-4o"))
     p.add_argument("--review-model", default=os.getenv("ORCH_REVIEW_MODEL", "gpt-5"))
@@ -325,7 +325,9 @@ def main(argv: List[str]) -> int:
         if wants and instr_query:
             print(f"[case] {case.id}: instrument requested.")
             instr_result = None
-            if api_key:
+            if simulate:
+                instr_result = "(simulated-instrument-result)"
+            elif api_key:
                 instr_result = call_instrument(
                     model=str(args.instrument_model),
                     api_key=api_key,
@@ -360,9 +362,7 @@ def main(argv: List[str]) -> int:
     print("[review] preparing payload…")
     review_messages = build_review_prompt(results)
     review_text: Optional[str] = None
-
-    review_text = None
-    if api_key:
+    if api_key and not simulate:
         print(f"[review] calling reviewer model: {args.review_model}")
         review_text = call_instrument(model=str(args.review_model), api_key=api_key, messages=review_messages)
     if not review_text:

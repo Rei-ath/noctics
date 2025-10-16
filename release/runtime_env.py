@@ -39,13 +39,16 @@ _primary_alias_file = _runtime_meta / "primary_alias.txt"
 _lite_alias_file = _runtime_meta / "lite_alias.txt"
 
 if _primary_alias_file.exists():
-    os.environ.setdefault("CENTRAL_LLM_MODEL", _primary_alias_file.read_text().strip() or "gemma3:latest")
+    os.environ.setdefault("CENTRAL_LLM_MODEL", _primary_alias_file.read_text().strip() or "centi-noctics:latest")
 else:
-    _alias_manifest = _ollama_models / "manifests" / "registry.ollama.ai" / "library" / "noctics-edge" / "latest"
+    _alias_manifest = _ollama_models / "manifests" / "registry.ollama.ai" / "library" / "centi-noctics" / "latest"
     if _alias_manifest.exists():
-        os.environ.setdefault("CENTRAL_LLM_MODEL", "noctics-edge:latest")
+        os.environ.setdefault("CENTRAL_LLM_MODEL", "centi-noctics:latest")
     else:
-        os.environ.setdefault("CENTRAL_LLM_MODEL", "gemma3:latest")
+        os.environ.setdefault("CENTRAL_LLM_MODEL", "centi-noctics:latest")
 
 if _lite_alias_file.exists():
-    os.environ.setdefault("NOCTICS_EDGE_LITE_MODEL", _lite_alias_file.read_text().strip())
+    _lite_value = _lite_alias_file.read_text().strip()
+    if _lite_value:
+        os.environ.setdefault("NOCTICS_LITE_MODEL", _lite_value)
+        os.environ.setdefault("NOCTICS_EDGE_LITE_MODEL", _lite_value)

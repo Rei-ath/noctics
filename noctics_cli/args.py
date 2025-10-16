@@ -33,7 +33,7 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "-M", "--model",
-        default=os.getenv("CENTRAL_LLM_MODEL", "noctics-edge:latest"),
+        default=os.getenv("CENTRAL_LLM_MODEL", "centi-noctics:latest"),
         help="Model name (env CENTRAL_LLM_MODEL)",
     )
     parser.add_argument(

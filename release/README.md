@@ -13,12 +13,12 @@ model and any Ollama runtime bits.
 3. Execute `./scripts/build_release.sh`. The helper script downloads the LayMA
    Ollama runtime and stages the requested models inside
    `assets/ollama/models/`, exposing them inside the bundle as
-   aliases (default: `gemma3:latest` → `noctics-edge:latest`). Set
-   `MODEL_SPECS` (e.g. `gemma3:latest=>noctics-edge gemma3:1b=>edge-lite`) to
+   aliases (default: `qwen3:8b` → `centi-noctics:latest`). Set
+   `MODEL_SPECS` (e.g. `qwen3:8b=>centi-noctics qwen3:1.7b=>micro-noctics qwen3:4b=>milli-noctics qwen3:0.6b=>nano-noctics`) to
    add or rename aliases. Pass `NOCTICS_SKIP_ASSET_PREP=1` to opt out if you
    have staged assets manually.
 4. The PyInstaller build lands under `./dist/noctics-core/` and already contains
-   the runtime, the primary alias (noctics-edge), and any optional extra models.
+   the runtime, the primary alias (centi-noctics), and any optional extra models.
 5. Package `dist/noctics-core` however you distribute binaries (zip, installer,
    private PyPI wheel, etc.) and tag the private repo for the release.
 

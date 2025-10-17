@@ -9,6 +9,7 @@ jenv/
 .env
 .env.centi
 .env.micro
+.env.nano
 
 # Distribution / packaging
 build/
@@ -18,6 +19,7 @@ dist/
 
 # PyInstaller
 *.spec
+!release/noctics_nano.spec
 .pyi-build/
 
 # Editor and IDE files

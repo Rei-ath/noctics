@@ -1,80 +1,82 @@
 # Noctics (private)
 
-This repository contains the private release tooling for Noctics. The public
-`noctics-core` codebase lives as a Git submodule under `./core`, while this
-repo adds packaging, assets, and automation that should stay closed-source.
+Greetings, traveler. I am Nox, resident memelord of the Central CLI, and this repo is my secret playground. The public brain (a.k.a. `noctics-core`) lives as a submodule in `./core`; everything else in here is my stash of packaging tricks, shiny assets, and automation spells that the mortals are not ready for.
 
-## Quick Start
+## Lore drop
+- Core logic: grab it from https://github.com/Rei-ath/noctics-core (already vendored under `core/`).
+- This repo: glue code, release tooling, and the last shred of mystery. Keep it sealed.
 
+## TL;DR boot sequence
 ```bash
-# Activate your existing venv or the bundled jenv
-source jenv/bin/activate  # or python -m venv jenv && source jenv/bin/activate
+# Step 0: bring your own Python 3.11+ (Termux? sure. macOS? yup. Windows? obviously.)
 
-# Run the multitool (chat is the default command)
-python main.py              # or ./noctics chat
+# Step 1: install the public brain
+python -m pip install ./core    # swap for `pip install noctics-core` once it is live
 
-# Need help?
-./noctics --help            # overview of subcommands
-./noctics sessions list     # inspect saved conversations
+# Step 2: install my multitool wrapper
+python -m pip install .
+
+# Step 3: flex
+noctics --help
+noctics chat
 ```
 
-To customise the assistant’s voice, create `config/persona.overrides.json` or set `CENTRAL_PERSONA_*` environment variables (see `core/docs/PERSONA.md` for examples) and then run:
-
+## Wheel flex for the gadgeteers
 ```bash
-python -c "from central.persona import reload_persona_overrides; reload_persona_overrides()"
+python -m pip install --upgrade build pipx
+python -m build                  # behold: dist/noctics-X.Y.Z-py3-none-any.whl
+pipx install dist/noctics-*.whl  # or: uv tool install dist/noctics-*.whl
 ```
 
-## Layout
-
-- `core/` &mdash; public source code tracked at https://github.com/Rei-ath/noctics-core
-- `assets/` &mdash; private binaries and models that must be included in the release
-- `scripts/` &mdash; helper scripts for keeping the submodule in sync and building
-- `release/` &mdash; PyInstaller spec and documentation for the private build
-- `dist/` (generated) &mdash; build artifacts produced by the release script
-
-## Daily development
-
-Work on features inside the public repository (`core/`). Push changes upstream
-there and cut tags as usual. When a release is needed, update the submodule to
-the desired commit:
-
+## Dev mode grind
 ```bash
-./scripts/update_core.sh main
+python -m venv jenv && source jenv/bin/activate  # or use your own venv ritual
+python -m pip install -e core
+python -m pip install -e .
+python main.py        # same vibe as `noctics chat`
 ```
 
-## Building the closed-source package
+## Persona hacks (because memes demand custom flair)
+1. Drop overrides into `config/persona.overrides.json` or ship your own `CENTRAL_PERSONA_*` env vars (see `core/docs/PERSONA.md`).
+2. Tell me to reload:
+   ```bash
+   python -c "from central.persona import reload_persona_overrides; reload_persona_overrides()"
+   ```
 
-1. Run `./scripts/build_release.sh`. By default it downloads the LayMA Ollama
-   runtime and stages the Qwen3 cache under
-   `assets/ollama/models/`, exposing it inside the bundle as
-   `centi-nox`.
-2. To stage additional aliases (for example the nano/micro/milli tiers), set the
-   `MODEL_SPECS` environment variable before running the script, e.g.
-  `MODEL_SPECS="qwen3:8b=>centi-nox qwen3:1.7b=>micro-nox qwen3:4b=>milli-nox qwen3:0.6b=>nano-nox"`.
-   Re-run the build once the models are pulled. You can skip automatic
-   downloads by setting `NOCTICS_SKIP_ASSET_PREP=1` if the assets are already in
-   place.
+## Runtime loot table
+- Universal wheel: `python -m build` kicks out `dist/noctics-<version>-py3-none-any.whl`. Install it anywhere Python exists, Termux included.
+- Zipapp bonus: `python -m zipapp noctics_cli -m noctics_cli.multitool:main` gives you `noctics.pyz`. Run it with `python noctics.pyz chat` when you feel fancy.
+- Dependency reality check: I no longer poke `sys.path`. Install `noctics-core>=0.1.0` and the imports just vibe.
 
-Optional scale-specific bundles:
+## Map of the lair
+- `core/` : public source from the official repo (respect it).
+- `assets/` : private binaries, models, and assorted loot.
+- `scripts/` : helper incantations for syncing and building.
+- `release/` : PyInstaller spec plus secret sauce docs.
+- `dist/` : where artifacts spawn after release rituals.
 
-```bash
-./scripts/build_centi.sh   # dist/centi-noctics/  (bundles Qwen3 8B)
-./scripts/build_micro.sh   # dist/micro-noctics/  (bundles Qwen3 1.7B)
-```
+## Daily grind instructions
+1. Hack on `core/` like a responsible wizard and push upstream.
+2. When ready, update the submodule pointer here:
+   ```bash
+   ./scripts/update_core.sh main
+   ```
 
-| Scale  | Bundle Directory    | Packaged Alias   | Upstream Model |
-|--------|---------------------|------------------|----------------|
-| micro  | `dist/micro-noctics/`   | `micro-nox`      | `qwen3:1.7b`   |
-| centi  | `dist/centi-noctics/`   | `centi-nox`      | `qwen3:8b`     |
+## Release ritual (closed-source bundle)
+1. `./scripts/build_release.sh` pulls the LayMA Ollama runtime and stages Qwen3 models into `assets/ollama/models/`.
+2. Want multiple scales? Summon them:
+   ```bash
+   MODEL_SPECS="qwen3:8b=>centi-nox qwen3:1.7b=>micro-nox qwen3:4b=>milli-nox qwen3:0.6b=>nano-nox" ./scripts/build_release.sh
+   ```
+   Already hoarded the assets? Set `NOCTICS_SKIP_ASSET_PREP=1`.
+3. Bonus bundles:
+   ```bash
+   ./scripts/build_centi.sh   # dist/centi-noctics/  -> centi-nox (Qwen3 8B)
+   ./scripts/build_micro.sh   # dist/micro-noctics/  -> micro-nox (Qwen3 1.7B)
+   ```
+4. Final loot lands in `dist/noctics-core/`. Zip it, sign it, ship it, meme it.
 
-The PyInstaller bundle is emitted to `dist/noctics-core/`. Package or sign that
-folder according to the distribution channel (zip, installer, private PyPI
-wheel, etc.). Commit the updated submodule pointer and any packaging metadata
-changes in this repo when you cut a release.
-
-
-To smoke-test the packaged bits locally:
-
+## Smoke test arena
 ```bash
 export OLLAMA_HOME="$(mktemp -d)"
 export OLLAMA_MODELS="$PWD/dist/noctics-core/_internal/resources/ollama/models"
@@ -86,23 +88,22 @@ kill $OLLAMA_PID
 rm -rf "$OLLAMA_HOME"
 ```
 
-## Benchmarking
-
-- Orchestration eval (end-to-end with optional reviewer):
+## Benchmark flexes
+- Orchestration run (with optional reviewer judge):
   - `python scripts/orchestrate_eval.py --out data/orch_eval.json`
-  - Simulated (no network): `NO_NETWORK=1 python scripts/orchestrate_eval.py --simulate --out data/orch_eval.json`
+  - No network? `NO_NETWORK=1 python scripts/orchestrate_eval.py --simulate --out data/orch_eval.json`
+- Multi-target latency showdown:
+  ```json
+  [
+    {"name": "local-centi", "url": "http://127.0.0.1:11434/api/generate", "model": "centi-nox"},
+    {"name": "openai", "url": "https://api.openai.com/v1/chat/completions", "model": "gpt-4o", "api_key": "${OPENAI_API_KEY}"}
+  ]
+  ```
+  Then: `python scripts/benchmark_targets.py --targets targets.json --stream --out data/bench_results.json`
 
-- Multi-target benchmark (latency, TTFT, instrument usage):
-  - Prepare targets JSON (example):
-    ```json
-    [
-      {"name": "local-centi", "url": "http://127.0.0.1:11434/api/generate", "model": "centi-nox"},
-      {"name": "openai", "url": "https://api.openai.com/v1/chat/completions", "model": "gpt-4o", "api_key": "${OPENAI_API_KEY}"}
-    ]
-    ```
-  - Run: `python scripts/benchmark_targets.py --targets targets.json --stream --out data/bench_results.json`
+## Lore addendum
+- Central is provider-agnostic: point `CENTRAL_LLM_URL` and `CENTRAL_LLM_MODEL` at any OpenAI-ish endpoint or Ollama `/api/generate`.
+- Dev mode leans on `memory/system_prompt.dev.txt`; normal mortals use `memory/system_prompt.txt`.
+- Persona overrides chill in `config/persona.overrides.json` (or whatever `CENTRAL_PERSONA_FILE` points to). Share responsibly.
 
-Notes:
-- Central remains provider-agnostic: set `CENTRAL_LLM_URL` and `CENTRAL_LLM_MODEL` to point at any OpenAI-like endpoint or Ollama `/api/generate`.
-- Dev mode uses `memory/system_prompt.dev.txt`; normal runs use `memory/system_prompt.txt`.
-- Persona overrides live in `config/persona.overrides.json` (or any path referenced by `CENTRAL_PERSONA_FILE`). Track reusable tweaks in version control if they are safe to publish.
+Carry on, keep the memes dank, and do not forget to install the core brain before summoning me. - Nox

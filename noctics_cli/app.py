@@ -25,46 +25,57 @@ except Exception:  # pragma: no cover - platform without readline
     readline = None  # type: ignore
 from pathlib import Path
 
-_CORE_ROOT = Path(__file__).resolve().parents[1] / "core"
-if str(_CORE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_CORE_ROOT))
-
-# No direct HTTP in the CLI; core handles requests
-from central.colors import color
-from central.core import ChatClient, DEFAULT_URL as CORE_DEFAULT_URL, build_payload, strip_chain_of_thought
-from central.core import clean_public_reply
-from central.persona import resolve_persona, render_system_prompt
-from central.runtime_identity import (
-    RuntimeIdentity as _RuntimeIdentity,
-    resolve_runtime_identity as _resolve_runtime_identity,
-)
-from noxl import compute_title_from_messages, load_session_messages, list_sessions as noxl_list_sessions
-from central.commands.completion import setup_completions
-from central.commands.instrument import (
-    choose_instrument_interactively,
-    describe_instrument_status,
-    get_instrument_candidates,
-    instrument_automation_enabled,
-)
-from central.commands.sessions import (
-    list_sessions as cmd_list_sessions,
-    print_sessions as cmd_print_sessions,
-    resolve_by_ident_or_index as cmd_resolve_by_ident_or_index,
-    load_into_context as cmd_load_into_context,
-    rename_session as cmd_rename_session,
-    merge_sessions as cmd_merge_sessions,
-    latest_session as cmd_latest_session,
-    print_latest_session as cmd_print_latest_session,
-    archive_early_sessions as cmd_archive_early_sessions,
-    show_session as cmd_show_session,
-    browse_sessions as cmd_browse_sessions,
-)
-from central.commands.help_cmd import print_help as cmd_print_help
-from interfaces.dotenv import load_local_dotenv
-from interfaces.dev_identity import resolve_developer_identity
-from interfaces.paths import resolve_memory_root, resolve_sessions_root
-from central.system_info import hardware_summary
-from central.version import __version__
+try:
+    # No direct HTTP in the CLI; core handles requests
+    from central.colors import color
+    from central.core import (
+        ChatClient,
+        DEFAULT_URL as CORE_DEFAULT_URL,
+        build_payload,
+        strip_chain_of_thought,
+    )
+    from central.core import clean_public_reply
+    from central.persona import resolve_persona, render_system_prompt
+    from central.runtime_identity import (
+        RuntimeIdentity as _RuntimeIdentity,
+        resolve_runtime_identity as _resolve_runtime_identity,
+    )
+    from noxl import (
+        compute_title_from_messages,
+        load_session_messages,
+        list_sessions as noxl_list_sessions,
+    )
+    from central.commands.completion import setup_completions
+    from central.commands.instrument import (
+        choose_instrument_interactively,
+        describe_instrument_status,
+        get_instrument_candidates,
+        instrument_automation_enabled,
+    )
+    from central.commands.sessions import (
+        list_sessions as cmd_list_sessions,
+        print_sessions as cmd_print_sessions,
+        resolve_by_ident_or_index as cmd_resolve_by_ident_or_index,
+        load_into_context as cmd_load_into_context,
+        rename_session as cmd_rename_session,
+        merge_sessions as cmd_merge_sessions,
+        latest_session as cmd_latest_session,
+        print_latest_session as cmd_print_latest_session,
+        archive_early_sessions as cmd_archive_early_sessions,
+        show_session as cmd_show_session,
+        browse_sessions as cmd_browse_sessions,
+    )
+    from central.commands.help_cmd import print_help as cmd_print_help
+    from interfaces.dotenv import load_local_dotenv
+    from interfaces.dev_identity import resolve_developer_identity
+    from interfaces.paths import resolve_memory_root, resolve_sessions_root
+    from central.system_info import hardware_summary
+    from central.version import __version__
+except ImportError as exc:  # pragma: no cover - dependency missing
+    raise ImportError(
+        "Noctics CLI requires the noctics-core package. "
+        "Install it with `pip install noctics-core` or ensure the central modules are on PYTHONPATH."
+    ) from exc
 from .args import DEFAULT_URL, parse_args
 from .dev import (
     CENTRAL_DEV_PASSPHRASE_ATTEMPT_ENV,

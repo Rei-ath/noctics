@@ -2,19 +2,18 @@
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-_CORE_ROOT = Path(__file__).resolve().parents[1] / "core"
-if str(_CORE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_CORE_ROOT))
-
 import os
 from getpass import getpass
 from typing import Optional
 
-from central.colors import color
-from central.config import get_runtime_config
+try:
+    from central.colors import color
+    from central.config import get_runtime_config
+except ImportError as exc:  # pragma: no cover - dependency missing
+    raise ImportError(
+        "Noctics CLI developer helpers require the noctics-core package. "
+        "Install it with `pip install noctics-core` or ensure the central modules are importable."
+    ) from exc
 
 DEFAULT_DEV_PASSPHRASE = "jx0"
 CENTRAL_DEV_PASSPHRASE_ENV = "CENTRAL_DEV_PASSPHRASE"
@@ -62,4 +61,3 @@ def require_dev_passphrase(expected: Optional[str], *, interactive: bool) -> boo
             return True
         print(color("Incorrect developer passphrase.", fg="red"))
     return False
-

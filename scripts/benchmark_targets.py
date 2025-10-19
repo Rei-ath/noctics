@@ -24,17 +24,18 @@ import sys
 import time
 from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
-# Wire core into path
 ROOT = Path(__file__).resolve().parents[1]
-CORE_ROOT = ROOT / "core"
-if str(CORE_ROOT) not in sys.path:
-    sys.path.insert(0, str(CORE_ROOT))
 
-from central.core import ChatClient  # type: ignore
-from central.commands.instrument import extract_instrument_query  # type: ignore
-from interfaces.dotenv import load_local_dotenv  # type: ignore
+try:
+    from central.core import ChatClient  # type: ignore
+    from interfaces.dotenv import load_local_dotenv  # type: ignore
+except ImportError as exc:  # pragma: no cover - dependency missing
+    raise ImportError(
+        "Benchmark tooling requires the noctics-core package. "
+        "Install it with `pip install noctics-core` or ensure the central modules are importable."
+    ) from exc
 
 
 def _bool_env(name: str, default: bool = False) -> bool:

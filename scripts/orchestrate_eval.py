@@ -35,21 +35,24 @@ import sys
 from dataclasses import dataclass, asdict
 import re
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional
 from urllib.request import Request, urlopen
 from urllib.error import HTTPError, URLError
 
 
-# Wire core into path
 ROOT = Path(__file__).resolve().parents[1]
 CORE_ROOT = ROOT / "core"
-if str(CORE_ROOT) not in sys.path:
-    sys.path.insert(0, str(CORE_ROOT))
 
-from central.core import ChatClient  # type: ignore
-from central.commands.instrument import extract_instrument_query  # type: ignore
-from central.transport import LLMTransport  # type: ignore
-from interfaces.dotenv import load_local_dotenv  # type: ignore
+try:
+    from central.core import ChatClient  # type: ignore
+    from central.commands.instrument import extract_instrument_query  # type: ignore
+    from central.transport import LLMTransport  # type: ignore
+    from interfaces.dotenv import load_local_dotenv  # type: ignore
+except ImportError as exc:  # pragma: no cover - dependency missing
+    raise ImportError(
+        "Orchestration eval tooling requires the noctics-core package. "
+        "Install it with `pip install noctics-core` or ensure the central modules are importable."
+    ) from exc
 
 
 # Instruments are optional; we only import the registry when needed

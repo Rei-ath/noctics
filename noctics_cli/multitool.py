@@ -8,24 +8,26 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Sequence
 
-_CORE_ROOT = Path(__file__).resolve().parents[1] / "core"
-if str(_CORE_ROOT) not in sys.path:
-    sys.path.insert(0, str(_CORE_ROOT))
-
-from central.colors import color
-from central.commands.sessions import (
-    archive_early_sessions as cmd_archive_early_sessions,
-    browse_sessions as cmd_browse_sessions,
-    latest_session as cmd_latest_session,
-    list_sessions as cmd_list_sessions,
-    merge_sessions as cmd_merge_sessions,
-    print_latest_session as cmd_print_latest_session,
-    print_sessions as cmd_print_sessions,
-    rename_session as cmd_rename_session,
-    show_session as cmd_show_session,
-)
-from central.version import __version__
-from interfaces.dotenv import load_local_dotenv
+try:
+    from central.colors import color
+    from central.commands.sessions import (
+        archive_early_sessions as cmd_archive_early_sessions,
+        browse_sessions as cmd_browse_sessions,
+        latest_session as cmd_latest_session,
+        list_sessions as cmd_list_sessions,
+        merge_sessions as cmd_merge_sessions,
+        print_latest_session as cmd_print_latest_session,
+        print_sessions as cmd_print_sessions,
+        rename_session as cmd_rename_session,
+        show_session as cmd_show_session,
+    )
+    from central.version import __version__
+    from interfaces.dotenv import load_local_dotenv
+except ImportError as exc:  # pragma: no cover - dependency missing
+    raise ImportError(
+        "Noctics CLI requires the noctics-core package. "
+        "Install it with `pip install noctics-core` or make sure the central modules are importable."
+    ) from exc
 from noctics_cli.app import main as chat_main
 
 

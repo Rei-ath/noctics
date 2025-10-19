@@ -1063,12 +1063,13 @@ def main(argv: List[str]) -> int:
             2,
             color(f"║ Developer      : {developer_name:<38}║", fg="cyan"),
         )
-        seen = set()
-        for line in status_lines:
-            if line in seen:
-                continue
-            seen.add(line)
-            print(line)
+
+    seen = set()
+    for line in status_lines:
+        if line in seen:
+            continue
+        seen.add(line)
+        print(line)
 
     if (sys_prompt_text or identity_line):
         # Recompute for display after any identity injection

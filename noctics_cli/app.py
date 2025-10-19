@@ -1056,10 +1056,13 @@ def main(argv: List[str]) -> int:
             color("╚════════════════════════════════════════════════════════╝", fg="cyan", bold=True),
         ])
 
-        if getattr(args, "dev", False):
-            dev_identity = resolve_developer_identity()
-            developer_name = dev_identity.display_name[:22]
-            status_lines.insert(2, color(f"║ Developer      : {developer_name:<22}║", fg="cyan"))
+    if getattr(args, "dev", False):
+        dev_identity = resolve_developer_identity()
+        developer_name = dev_identity.display_name[:38]
+        status_lines.insert(
+            2,
+            color(f"║ Developer      : {developer_name:<38}║", fg="cyan"),
+        )
         seen = set()
         for line in status_lines:
             if line in seen:

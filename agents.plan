@@ -1,0 +1,38 @@
+Noctics Roadmap Toward $1M Asset Value
+======================================
+
+0. Baseline
+-----------
+- Ensure pytest + lint suites succeed in CI.
+- Track adoption metrics from existing installs.
+
+1. Instrumentation Expansion
+----------------------------
+- Ship Anthropic and Gemini (or DeepSeek) SDK-backed instruments with parity routing tests.
+- Publish a lightweight instrument plug-in protocol for external contributors.
+
+2. Packaging & Supply Chain
+---------------------------
+- Sign release artifacts; add checksum verification to `prepare_assets.sh`.
+- Provide container images and signed installers for air-gapped deployment.
+- Harden core-pyd distribution so binaries load as first-class Python packages.
+
+3. Experience Layer
+-------------------
+- Layer a TUI or lightweight desktop shell on top of the session vault.
+- Formalise scripted workflows (`/review`, `/deploy`, etc.) with documentation.
+
+4. Observability & Operations
+----------------------------
+- Emit optional Prometheus/OpenTelemetry hooks for sessions, latency, and helper usage.
+- Document retention policies and JSONL schemas for enterprise compliance.
+
+5. Traction & GTM
+-----------------
+- Publish public docs and case studies demonstrating productivity wins.
+- Define tiered licensing (community vs. pro vs. enterprise) and pilot with early adopters.
+
+6. Follow-ups
+-------------
+- Schedule quarterly roadmap reviews; update this plan after major releases.
+- Maintain alignment between `agents.plan` and `core/AGENTS.md`.

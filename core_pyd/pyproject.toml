@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "noctics-core-pyd"
+version = "0.0.0"
+description = "Binary distribution of the Noctics core modules."
+requires-python = ">=3.11"
+authors = [{name = "Rei"}]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Operating System :: OS Independent",
+]
+readme = "README.md"
+
+[tool.setuptools]
+packages = ["core_pyd"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+"core_pyd" = ["*.so"]
+
+[tool.setuptools.data-files]
+"" = ["core_pyd/noctics_core.pth"]

@@ -32,15 +32,19 @@ PY
 
 echo "[push_core_pyd] Python extension suffix detected as ${EXT_SUFFIX}" >&2
 
-"${PYTHON_BIN}" - <<PY
-import pathlib, shutil, sys
+"${PYTHON_BIN}" - <<'PY'
+import pathlib, shutil
 build_dir = pathlib.Path(r"${BUILD_DIR}")
 dist_dir = pathlib.Path(r"${DIST_DIR}")
-for path in (build_dir, dist_dir):
-    if path.exists():
-        shutil.rmtree(path)
+if build_dir.exists():
+    shutil.rmtree(build_dir)
 build_dir.mkdir(parents=True, exist_ok=True)
 dist_dir.mkdir(parents=True, exist_ok=True)
+for artifact in dist_dir.glob("*.so"):
+    artifact.unlink()
+pycache = dist_dir / "__pycache__"
+if pycache.exists():
+    shutil.rmtree(pycache)
 PY
 
 compile_module() {
@@ -91,7 +95,7 @@ compile_file_module() {
 }
 
 # Compile top-level packages.
-declare -a PACKAGES=("central" "config" "inference")
+declare -a PACKAGES=("central" "config" "inference" "interfaces" "noxl")
 for package in "${PACKAGES[@]}"; do
   if [[ -d "${CORE_DIR}/${package}" ]]; then
     compile_module "${package}"

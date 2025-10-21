@@ -8,7 +8,33 @@ import sys
 from pathlib import Path
 from typing import List, Optional, Sequence
 
-try:
+
+def _ensure_local_core_path() -> None:
+    """Add local source tree copies of the core packages to sys.path when present."""
+    repo_root = Path(__file__).resolve().parents[1]
+    candidates = [
+        repo_root / "core",
+        repo_root / "core_pyd",
+    ]
+    for candidate in candidates:
+        if candidate.is_dir():
+            path = str(candidate)
+            if path not in sys.path:
+                sys.path.insert(0, path)
+            if candidate.name == "core_pyd":
+                try:  # Ensure compiled modules register themselves.
+                    import importlib
+
+                    importlib.import_module("core_pyd")
+                except ImportError:
+                    pass
+
+
+def _import_core_dependencies() -> None:
+    global color, cmd_archive_early_sessions, cmd_browse_sessions, cmd_latest_session
+    global cmd_list_sessions, cmd_merge_sessions, cmd_print_latest_session
+    global cmd_print_sessions, cmd_rename_session, cmd_show_session, __version__, load_local_dotenv
+
     from central.colors import color
     from central.commands.sessions import (
         archive_early_sessions as cmd_archive_early_sessions,
@@ -23,11 +49,19 @@ try:
     )
     from central.version import __version__
     from interfaces.dotenv import load_local_dotenv
-except ImportError as exc:  # pragma: no cover - dependency missing
-    raise ImportError(
-        "Noctics CLI requires the noctics-core package. "
-        "Install it with `pip install noctics-core` or make sure the central modules are importable."
-    ) from exc
+
+
+try:
+    _import_core_dependencies()
+except ImportError:
+    _ensure_local_core_path()
+    try:
+        _import_core_dependencies()
+    except ImportError as exc:  # pragma: no cover - dependency missing
+        raise ImportError(
+            "Noctics CLI requires the noctics-core package. "
+            "Install it with `pip install noctics-core` or make sure the central modules are importable."
+        ) from exc
 from noctics_cli.app import main as chat_main
 
 

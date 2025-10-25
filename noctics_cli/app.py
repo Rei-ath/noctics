@@ -15,9 +15,10 @@ import os
 import re
 import subprocess
 import sys
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Iterable, List, Optional
 from urllib.parse import urlparse
 try:
     import readline  # type: ignore
@@ -52,6 +53,7 @@ try:
         get_instrument_candidates,
         instrument_automation_enabled,
     )
+    from central.config import get_runtime_config
     from central.commands.sessions import (
         list_sessions as cmd_list_sessions,
         print_sessions as cmd_print_sessions,
@@ -76,6 +78,7 @@ except ImportError as exc:  # pragma: no cover - dependency missing
         "Noctics CLI requires the noctics-core package. "
         "Install it with `pip install noctics-core` or ensure the central modules are on PYTHONPATH."
     ) from exc
+from .metrics import record_cli_run
 from .args import DEFAULT_URL, parse_args
 from .dev import (
     CENTRAL_DEV_PASSPHRASE_ATTEMPT_ENV,
@@ -102,6 +105,38 @@ THINK_CLOSE = "</think>"
 THINK_OPEN_L = THINK_OPEN.lower()
 THINK_CLOSE_L = THINK_CLOSE.lower()
 THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
+
+
+def _read_first_prompt(candidates: Iterable[Path]) -> Optional[str]:
+    """Return the first non-empty prompt from the provided candidate paths."""
+
+    for candidate in candidates:
+        try:
+            if candidate.exists():
+                text = candidate.read_text(encoding="utf-8").strip()
+                if text:
+                    return text
+        except OSError:
+            continue
+    return None
+
+
+def _configured_instrument_roster() -> List[str]:
+    """Return explicitly configured instrument names (env or config only)."""
+
+    env_tokens = [
+        token.strip()
+        for token in (os.getenv("CENTRAL_INSTRUMENTS") or "").split(",")
+        if token.strip()
+    ]
+    if env_tokens:
+        return env_tokens
+
+    cfg = get_runtime_config().instrument
+    if cfg.roster:
+        return list(cfg.roster)
+
+    return []
 
 
 def _describe_runtime_target(url: str) -> tuple[str, str]:
@@ -661,6 +696,11 @@ def main(argv: List[str]) -> int:
             print(color("Developer mode locked.", fg="red", bold=True))
             return 1
 
+    try:
+        record_cli_run(resolve_memory_root(), __version__)
+    except Exception:
+        pass
+
     if getattr(args, "version", False):
         print(__version__)
         return 0
@@ -770,19 +810,23 @@ def main(argv: List[str]) -> int:
     # Load default system prompt from file if not provided
     if args.system is None and not args.messages_file:
         if getattr(args, "dev", False):
-            dev_local = Path("memory/system_prompt.dev.local.txt")
-            dev_default = Path("memory/system_prompt.dev.txt")
-            if dev_local.exists():
-                args.system = dev_local.read_text(encoding="utf-8").strip()
-            elif dev_default.exists():
-                args.system = dev_default.read_text(encoding="utf-8").strip()
+            args.system = _read_first_prompt(
+                [
+                    Path("memory/system_prompt.dev.local.md"),
+                    Path("memory/system_prompt.dev.local.txt"),
+                    Path("memory/system_prompt.dev.md"),
+                    Path("memory/system_prompt.dev.txt"),
+                ]
+            )
         if args.system is None:
-            local_path = Path("memory/system_prompt.local.txt")
-            default_path = Path("memory/system_prompt.txt")
-            if local_path.exists():
-                args.system = local_path.read_text(encoding="utf-8").strip()
-            elif default_path.exists():
-                args.system = default_path.read_text(encoding="utf-8").strip()
+            args.system = _read_first_prompt(
+                [
+                    Path("memory/system_prompt.local.md"),
+                    Path("memory/system_prompt.local.txt"),
+                    Path("memory/system_prompt.md"),
+                    Path("memory/system_prompt.txt"),
+                ]
+            )
 
     if args.system:
         args.system = render_system_prompt(args.system, persona)
@@ -955,6 +999,42 @@ def main(argv: List[str]) -> int:
         else:
             args.system = instrument_auto_line
 
+    instrument_roster_line: Optional[str] = None
+    configured_roster = _configured_instrument_roster()
+    if configured_roster:
+        roster_clause = ", ".join(configured_roster)
+        instrument_roster_line = (
+            f"Instrument roster ready: {roster_clause}. Use [INSTRUMENT QUERY] blocks when you truly need to escalate."
+        )
+    if instrument_roster_line:
+        instrument_roster_inserted = False
+        for msg in messages:
+            if (
+                isinstance(msg, dict)
+                and msg.get("role") == "system"
+                and instrument_roster_line in str(msg.get("content") or "")
+            ):
+                instrument_roster_inserted = True
+                break
+        if not instrument_roster_inserted:
+            inserted = False
+            for i in range(len(messages) - 1, -1, -1):
+                msg = messages[i]
+                if isinstance(msg, dict) and msg.get("role") == "system":
+                    content = str(msg.get("content") or "").strip()
+                    content = (content + ("\n\n" if content else "") + instrument_roster_line).strip()
+                    messages[i]["content"] = content
+                    inserted = True
+                    break
+            if not inserted:
+                messages.insert(0, {"role": "system", "content": instrument_roster_line})
+            if args.system:
+                content = args.system.strip()
+                if instrument_roster_line not in content:
+                    args.system = (content + ("\n\n" if content else "") + instrument_roster_line).strip()
+            else:
+                args.system = instrument_roster_line
+
     user_line = f"User handle: {args.user_name}"
     user_inserted = False
     for msg in messages:
@@ -1055,21 +1135,20 @@ def main(argv: List[str]) -> int:
             ),
             color("╚════════════════════════════════════════════════════════╝", fg="cyan", bold=True),
         ])
+        if getattr(args, "dev", False):
+            dev_identity = resolve_developer_identity()
+            developer_name = dev_identity.display_name[:38]
+            status_lines.insert(
+                2,
+                color(f"║ Developer      : {developer_name:<38}║", fg="cyan"),
+            )
 
-    if getattr(args, "dev", False):
-        dev_identity = resolve_developer_identity()
-        developer_name = dev_identity.display_name[:38]
-        status_lines.insert(
-            2,
-            color(f"║ Developer      : {developer_name:<38}║", fg="cyan"),
-        )
-
-    seen = set()
-    for line in status_lines:
-        if line in seen:
-            continue
-        seen.add(line)
-        print(line)
+        seen = set()
+        for line in status_lines:
+            if line in seen:
+                continue
+            seen.add(line)
+            print(line)
 
     if (sys_prompt_text or identity_line):
         # Recompute for display after any identity injection
@@ -1088,98 +1167,151 @@ def main(argv: List[str]) -> int:
     runtime_candidates = _build_runtime_candidates(args)
     connection_errors: List[tuple[RuntimeCandidate, Exception]] = []
     client: Optional[ChatClient] = None
+    current_candidate_index = -1
+    last_persona_line: Optional[str] = None
 
-    for index, candidate in enumerate(runtime_candidates):
-        client_candidate: Optional[ChatClient] = None
-        try:
-            client_candidate = ChatClient(
-                url=candidate.url,
-                model=candidate.model,
-                api_key=candidate.api_key,
-                temperature=args.temperature,
-                max_tokens=args.max_tokens,
-                stream=bool(args.stream),
-                sanitize=bool(args.sanitize),
-                messages=messages,
-                enable_logging=True,
-                strip_reasoning=not bool(args.show_think),
-                memory_user=identity.user_id,
-                memory_user_display=identity.display_name,
-            )
-            client_candidate.check_connectivity()
-        except Exception as exc:
-            connection_errors.append((candidate, exc))
-            if client_candidate is not None:
-                try:
-                    client_candidate.maybe_delete_empty_session()
-                except Exception:
-                    pass
-            if interactive:
+    def _remove_persona_line_from_text(text: Optional[str], persona_line: Optional[str]) -> Optional[str]:
+        if not text or not persona_line:
+            return text
+        cleaned = text.replace(f"\n\n{persona_line}", "")
+        cleaned = cleaned.replace(f"{persona_line}\n\n", "")
+        cleaned = cleaned.replace(persona_line, "")
+        cleaned = cleaned.strip()
+        return cleaned or None
+
+    def _remove_persona_from_messages(target_messages: List[Dict[str, Any]], persona_line: Optional[str]) -> None:
+        if not persona_line:
+            return
+        for msg in target_messages:
+            if isinstance(msg, dict) and msg.get("role") == "system":
+                content = str(msg.get("content") or "")
+                if persona_line not in content:
+                    continue
+                cleaned = content.replace(f"\n\n{persona_line}", "")
+                cleaned = cleaned.replace(f"{persona_line}\n\n", "")
+                cleaned = cleaned.replace(persona_line, "")
+                msg["content"] = cleaned.strip()
+
+    def activate_runtime(start_index: int, *, show_fallback: bool) -> bool:
+        nonlocal client, persona, messages, current_candidate_index, last_persona_line, args
+        prior_client = client
+        prior_log_path: Optional[Path] = None
+        if prior_client:
+            try:
+                prior_log_path = prior_client.log_path()
+            except Exception:
+                prior_log_path = None
+
+        for idx in range(start_index, len(runtime_candidates)):
+            candidate = runtime_candidates[idx]
+            base_messages = deepcopy(prior_client.messages) if prior_client else deepcopy(messages)
+            client_candidate: Optional[ChatClient] = None
+            try:
+                client_candidate = ChatClient(
+                    url=candidate.url,
+                    model=candidate.model,
+                    api_key=candidate.api_key,
+                    temperature=args.temperature,
+                    max_tokens=args.max_tokens,
+                    stream=bool(args.stream),
+                    sanitize=bool(args.sanitize),
+                    messages=base_messages,
+                    enable_logging=True,
+                    strip_reasoning=not bool(args.show_think),
+                    memory_user=identity.user_id,
+                    memory_user_display=identity.display_name,
+                )
+                client_candidate.check_connectivity()
+            except Exception as exc:
+                connection_errors.append((candidate, exc))
+                if client_candidate is not None:
+                    try:
+                        client_candidate.maybe_delete_empty_session()
+                    except Exception:
+                        pass
                 label, endpoint = _describe_runtime_target(candidate.url)
-                print(color(f"Runtime unavailable ({label} @ {endpoint}): {exc}", fg="red"))
+                target_stream = sys.stdout if interactive else sys.stderr
+                print(color(f"Runtime unavailable ({label} @ {endpoint}): {exc}", fg="red"), file=target_stream)
             continue
 
-        client = client_candidate
-        persona = client.persona
-        args.url = candidate.url
-        args.model = candidate.model
-        args.api_key = candidate.api_key
-        update_runtime_meta(candidate.url, candidate.model, candidate.source)
+            client = client_candidate
+            persona = client.persona
+            current_candidate_index = idx
+            args.url = candidate.url
+            args.model = candidate.model
+            args.api_key = candidate.api_key
+            update_runtime_meta(candidate.url, candidate.model, candidate.source)
 
-        persona_line = (
-            f"Central persona: {persona.central_name} ({persona.scale_label}) — model target {persona.model_target}"
-        )
-        if args.system:
-            content = args.system.strip()
-            if persona_line not in content:
-                args.system = (content + ("\n\n" if content else "") + persona_line).strip()
-        else:
-            args.system = persona_line
+            if prior_log_path:
+                try:
+                    client.adopt_session_log(prior_log_path)
+                except Exception:
+                    pass
 
-        inserted = False
-        for i in range(len(messages) - 1, -1, -1):
-            msg = messages[i]
-            if isinstance(msg, dict) and msg.get("role") == "system":
-                content = str(msg.get("content") or "").strip()
-                if persona_line in content:
+            if last_persona_line:
+                _remove_persona_from_messages(client.messages, last_persona_line)
+                args.system = _remove_persona_line_from_text(args.system, last_persona_line)
+
+            persona_line = (
+                f"Central persona: {persona.central_name} ({persona.scale_label}) — model target {persona.model_target}"
+            )
+            last_persona_line = persona_line
+            if args.system:
+                content = args.system.strip()
+                if persona_line not in content:
+                    args.system = (content + ("\n\n" if content else "") + persona_line).strip()
+            else:
+                args.system = persona_line
+
+            inserted = False
+            for i in range(len(client.messages) - 1, -1, -1):
+                msg = client.messages[i]
+                if isinstance(msg, dict) and msg.get("role") == "system":
+                    content = str(msg.get("content") or "").strip()
+                    if persona_line in content:
+                        inserted = True
+                        break
+                    content = (content + ("\n\n" if content else "") + persona_line).strip()
+                    client.messages[i]["content"] = content
                     inserted = True
                     break
-                content = (content + ("\n\n" if content else "") + persona_line).strip()
-                messages[i]["content"] = content
-                inserted = True
-                break
-        if not inserted:
-            messages.insert(0, {"role": "system", "content": persona_line})
-        client.set_messages(messages)
+            if not inserted:
+                client.messages.insert(0, {"role": "system", "content": persona_line})
+            messages = client.messages
 
-        instrument_info = client.describe_target()
-        instrument_name = instrument_info.get("instrument")
-        instrument_warning = instrument_info.get("instrument_warning")
-        if instrument_warning and interactive:
-            print(
-                color(
-                    f"Instrument unavailable: {instrument_warning}",
-                    fg="yellow",
+            instrument_info = client.describe_target()
+            instrument_name = instrument_info.get("instrument")
+            instrument_warning = instrument_info.get("instrument_warning")
+            status_stream = sys.stdout if interactive else sys.stderr
+            if instrument_warning:
+                print(
+                    color(
+                        f"Instrument unavailable: {instrument_warning}",
+                        fg="yellow",
+                    ),
+                    file=status_stream,
                 )
-            )
-        if instrument_name and interactive:
-            print(
-                color(
-                    f"Instrument engaged: {instrument_name}",
-                    fg="yellow",
+            if instrument_name:
+                print(
+                    color(
+                        f"Instrument engaged: {instrument_name}",
+                        fg="yellow",
+                    ),
+                    file=status_stream,
                 )
-            )
-        if index > 0 and interactive:
-            label, endpoint = _describe_runtime_target(candidate.url)
-            print(color(f"Runtime fallback engaged: {label} ({endpoint}).", fg="yellow"))
-        break
-
-    if client is None:
-        if interactive:
-            print(color("Unable to reach any configured runtime.", fg="red", bold=True))
-            for candidate, exc in connection_errors:
+            if (idx > start_index or show_fallback):
                 label, endpoint = _describe_runtime_target(candidate.url)
-                print(color(f"  {candidate.source}: {label} ({endpoint}) -> {exc}", fg="red"))
+                print(color(f"Runtime fallback engaged: {label} ({endpoint}).", fg="yellow"), file=status_stream)
+            return True
+
+        return False
+
+    if not activate_runtime(0, show_fallback=False):
+        status_stream = sys.stdout if interactive else sys.stderr
+        print(color("Unable to reach any configured runtime.", fg="red", bold=True), file=status_stream)
+        for candidate, exc in connection_errors:
+            label, endpoint = _describe_runtime_target(candidate.url)
+            print(color(f"  {candidate.source}: {label} ({endpoint}) -> {exc}", fg="red"), file=status_stream)
         return 2
 
     if interactive:
@@ -1303,50 +1435,65 @@ def main(argv: List[str]) -> int:
         print(color(message, fg="yellow"))
 
     def one_turn(user_text: str) -> Optional[str]:
-        # Normal API mode via core client
+        nonlocal client, current_candidate_index
         show_think = bool(args.show_think)
-        if show_think:
-            print(color("[processing…]", fg="yellow", bold=True), flush=True)
-        if args.stream:
-            stream_emit, stream_finish = _make_stream_printer(show_think)
-            # print("errrrroor is here11")
+
+        while True:
+            if show_think:
+                print(color("[processing…]", fg="yellow", bold=True), flush=True)
+
+            if args.stream:
+                stream_emit, stream_finish = _make_stream_printer(show_think)
+            else:
+                stream_emit = None
+                stream_finish = None
 
             try:
-                assistant = client.one_turn(user_text, on_delta=stream_emit)
-                
-            except Exception as e:
-                stream_finish()
+                if args.stream:
+                    assistant = client.one_turn(user_text, on_delta=stream_emit)
+                else:
+                    assistant = client.one_turn(user_text)
+            except Exception as exc:
+                if args.stream and stream_finish:
+                    stream_finish()
+                    print()
+                failing_label, failing_endpoint = _describe_runtime_target(args.url)
+                target_stream = sys.stdout if interactive else sys.stderr
+                print(color(f"Runtime error ({failing_label} @ {failing_endpoint}): {exc}", fg="red"), file=target_stream)
+                error_text = str(exc)
+                missing_match = re.search(r"model '([^']+)' not found", error_text)
+                if missing_match:
+                    missing_model = missing_match.group(1)
+                    hint = (
+                        f"Model '{missing_model}' is unavailable at {failing_endpoint}. "
+                        f"Start your runtime and run `ollama pull {missing_model}` (or adjust CENTRAL_LLM_MODEL)."
+                    )
+                    print(color(hint, fg="yellow"), file=target_stream)
+                next_index = current_candidate_index + 1 if current_candidate_index >= 0 else 0
+                if not activate_runtime(next_index, show_fallback=True):
+                    print(color("Request failed:", fg="red", bold=True), file=target_stream)
+                    print(color(f"{exc}", fg="red"), file=target_stream)
+                    print(
+                        color(
+                            "Central could not process the request. Ensure the model endpoint is available and try again.",
+                            fg="yellow",
+                        ),
+                        file=target_stream,
+                    )
+                    return None
+                print(color("Retrying request with fallback runtime…", fg="yellow"), file=target_stream)
+                continue
+
+            if args.stream:
+                if stream_finish:
+                    stream_finish()
                 print()
-                print(color("Request failed:", fg="red", bold=True))
-                print(color(f"{e}", fg="red"))
-                print(
-                    color(
-                        "Central could not process the request. Ensure the model endpoint is available and try again.",
-                        fg="yellow",
-                    )
-                )
-                return None
-            stream_finish()
-            print()
-            if assistant is not None and ChatClient.wants_instrument(assistant):
-                notify_instrument_needed()
-            handle_dev_shell_commands(assistant)
-            assistant = handle_title_change(assistant)
-            return assistant
-        else:
-            try:
-                # print("errrrroor is here")
-                assistant = client.one_turn(user_text)
-            except Exception as e:
-                print(color("Request failed:", fg="red", bold=True))
-                print(color(f"{e}", fg="red"))
-                print(
-                    color(
-                        "Central could not process the request. Ensure the model endpoint is available and try again.",
-                        fg="yellow",
-                    )
-                )
-                return None
+                if assistant is not None and ChatClient.wants_instrument(assistant):
+                    notify_instrument_needed()
+                handle_dev_shell_commands(assistant)
+                assistant = handle_title_change(assistant)
+                return assistant
+
             if assistant is not None:
                 if ChatClient.wants_instrument(assistant):
                     notify_instrument_needed()

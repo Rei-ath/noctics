@@ -25,7 +25,9 @@ DEFAULT_PORT = 4510
 
 def load_system_prompt() -> str | None:
     for candidate in (
+        ROOT / "memory" / "system_prompt.local.md",
         ROOT / "memory" / "system_prompt.local.txt",
+        ROOT / "memory" / "system_prompt.md",
         ROOT / "memory" / "system_prompt.txt",
     ):
         try:

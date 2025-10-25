@@ -6,21 +6,21 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CORE_DIR="${ROOT_DIR}/core"
-BUILD_DIR="${ROOT_DIR}/build/core_pyd"
-DIST_DIR="${ROOT_DIR}/core_pyd"
+BUILD_DIR="${ROOT_DIR}/build/core_pinaries"
+DIST_DIR="${ROOT_DIR}/core_pinaries"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
-COMMIT_MSG="${1:-Build: refresh core pyd artifacts}"
+COMMIT_MSG="${1:-Build: refresh core binaries artifacts}"
 TARGET_BRANCH="${TARGET_BRANCH:-$(git -C "${ROOT_DIR}" rev-parse --abbrev-ref HEAD)}"
 
 if [[ ! -d "${CORE_DIR}" ]]; then
-  echo "[push_core_pyd] Expected core directory at ${CORE_DIR}" >&2
+  echo "[push_core_pinaries] Expected core directory at ${CORE_DIR}" >&2
   exit 1
 fi
 
-echo "[push_core_pyd] Using python interpreter: ${PYTHON_BIN}" >&2
+echo "[push_core_pinaries] Using python interpreter: ${PYTHON_BIN}" >&2
 
 if ! "${PYTHON_BIN}" -m nuitka --version >/dev/null 2>&1; then
-  echo "[push_core_pyd] Nuitka not found. Installing (requires build toolchain)..." >&2
+  echo "[push_core_pinaries] Nuitka not found. Installing (requires build toolchain)..." >&2
   "${PYTHON_BIN}" -m pip install --quiet --upgrade nuitka
 fi
 
@@ -30,7 +30,7 @@ print(sysconfig.get_config_var("EXT_SUFFIX"))
 PY
 )"
 
-echo "[push_core_pyd] Python extension suffix detected as ${EXT_SUFFIX}" >&2
+echo "[push_core_pinaries] Python extension suffix detected as ${EXT_SUFFIX}" >&2
 
 "${PYTHON_BIN}" - <<'PY'
 import pathlib, shutil
@@ -52,11 +52,11 @@ compile_module() {
   local package_path="${CORE_DIR}/${module_name}"
 
   if [[ ! -d "${package_path}" ]]; then
-    echo "[push_core_pyd] Package directory ${package_path} not found" >&2
+    echo "[push_core_pinaries] Package directory ${package_path} not found" >&2
     exit 1
   fi
 
-  echo "[push_core_pyd] Compiling package ${module_name}" >&2
+  echo "[push_core_pinaries] Compiling package ${module_name}" >&2
   PYTHONPATH="${CORE_DIR}" "${PYTHON_BIN}" -m nuitka \
     --module "${package_path}" \
     --include-package="${module_name}" \
@@ -67,7 +67,7 @@ compile_module() {
   built_file="$(find "${BUILD_DIR}" -maxdepth 1 -type f -name "${module_name}*${EXT_SUFFIX}" | head -n1 || true)"
 
   if [[ -z "${built_file}" ]]; then
-    echo "[push_core_pyd] Failed to locate built artifact for ${module_name}" >&2
+    echo "[push_core_pinaries] Failed to locate built artifact for ${module_name}" >&2
     exit 1
   fi
 
@@ -78,7 +78,7 @@ compile_file_module() {
   local module_basename="$1"
   local source_path="$2"
 
-  echo "[push_core_pyd] Compiling ${module_basename} from ${source_path}" >&2
+  echo "[push_core_pinaries] Compiling ${module_basename} from ${source_path}" >&2
   PYTHONPATH="${CORE_DIR}" "${PYTHON_BIN}" -m nuitka \
     --module "${source_path}" \
     --output-dir="${BUILD_DIR}"
@@ -87,7 +87,7 @@ compile_file_module() {
   built_file="$(find "${BUILD_DIR}" -maxdepth 1 -type f -name "${module_basename}*${EXT_SUFFIX}" | head -n1 || true)"
 
   if [[ -z "${built_file}" ]]; then
-    echo "[push_core_pyd] Failed to locate built artifact for ${module_basename}" >&2
+    echo "[push_core_pinaries] Failed to locate built artifact for ${module_basename}" >&2
     exit 1
   fi
 
@@ -100,7 +100,7 @@ for package in "${PACKAGES[@]}"; do
   if [[ -d "${CORE_DIR}/${package}" ]]; then
     compile_module "${package}"
   else
-    echo "[push_core_pyd] Package ${package} not found in ${CORE_DIR}, skipping" >&2
+    echo "[push_core_pinaries] Package ${package} not found in ${CORE_DIR}, skipping" >&2
   fi
 done
 
@@ -113,18 +113,18 @@ for module_file in "${MODULE_FILES[@]}"; do
   fi
 done
 
-echo "[push_core_pyd] Staging compiled artifacts" >&2
+echo "[push_core_pinaries] Staging compiled artifacts" >&2
 git -C "${ROOT_DIR}" add "${DIST_DIR}"
 
 if git -C "${ROOT_DIR}" diff --cached --quiet; then
-  echo "[push_core_pyd] No changes detected in ${DIST_DIR}; skipping commit/push" >&2
+  echo "[push_core_pinaries] No changes detected in ${DIST_DIR}; skipping commit/push" >&2
   exit 0
 fi
 
-echo "[push_core_pyd] Committing with message: ${COMMIT_MSG}" >&2
+echo "[push_core_pinaries] Committing with message: ${COMMIT_MSG}" >&2
 git -C "${ROOT_DIR}" commit -m "${COMMIT_MSG}"
 
-echo "[push_core_pyd] Pushing to origin/${TARGET_BRANCH}" >&2
+echo "[push_core_pinaries] Pushing to origin/${TARGET_BRANCH}" >&2
 git -C "${ROOT_DIR}" push origin "${TARGET_BRANCH}"
 
-echo "[push_core_pyd] Done" >&2
+echo "[push_core_pinaries] Done" >&2

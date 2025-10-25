@@ -21,7 +21,7 @@ UPPER_HALF = "▀"
 FULL_BLOCK = "█"
 
 
-# --------- color helpers ----------------------------------------------------
+# --------- color utilities --------------------------------------------------
 
 def supports_truecolor() -> bool:
     colorterm = os.getenv("COLORTERM", "").lower()

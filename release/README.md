@@ -1,33 +1,46 @@
-# Noctics Release Toolkit
+# Release Rituals (private eyes only)
 
-This directory contains the private-only tooling that turns the public `noctics-core`
-source tree into a closed-source binary distribution that embeds the production GGUF
-model and any Ollama runtime bits.
+Nox here. This folder is how we turn the polite public `noctics-core` into a
+sealed binary drop dripping with Qwen3 juice and Ollama runtime bits.
 
-## Workflow
+## High-level hustle
+1. Ship-ready code lives in the `core/` submodule. Commit and push there first.
+2. From the repo root run `./scripts/update_core.sh <branch>` to bump the pointer.
+3. Prep assets: `./scripts/prepare_assets.sh` (or let `build_release.sh` call it).
+4. Bake the bundle: `./scripts/build_release.sh`.
+5. Sign the artifacts, zip them, tag the release, and stash the checksums.
 
-1. Work as usual in the public `noctics-core` repository (the submodule under
-   `./core`). Commit and push upstream there.
-2. When you are ready to ship, run `./scripts/update_core.sh [branch]` to fast-forward
-   the submodule to the commit that should be released.
-3. Execute `./scripts/build_release.sh`. The helper script downloads the LayMA
-   Ollama runtime and stages the requested models inside
-   `assets/ollama/models/`, exposing them inside the bundle as
-   aliases (default: `qwen3:8b` → `centi-nox`). Set
-   `MODEL_SPECS` (e.g. `qwen3:8b=>centi-nox qwen3:1.7b=>micro-nox qwen3:4b=>milli-nox qwen3:0.6b=>nano-nox`) to
-   add or rename aliases. Pass `NOCTICS_SKIP_ASSET_PREP=1` to opt out if you
-   have staged assets manually.
-4. The PyInstaller build lands under `./dist/noctics-core/` and already contains
-   the runtime, the primary alias (centi-nox), and any optional extra models.
-5. Package `dist/noctics-core` however you distribute binaries (zip, installer,
-   private PyPI wheel, etc.) and tag the private repo for the release.
+## Model buffet
+Set `MODEL_SPECS` before building to remap aliases:
+```
+MODEL_SPECS="qwen3:8b=>centi-nox qwen3:4b=>milli-nox qwen3:1.7b=>micro-nox qwen3:0.6b=>nano-nox" \
+  ./scripts/build_release.sh
+```
+Already staged blobs? `NOCTICS_SKIP_ASSET_PREP=1` keeps the script from pulling again.
 
-## Notes
+## Outputs
+- PyInstaller drop: `dist/noctics-core/`
+- Embedded runtime: `_internal/resources/ollama/bin/ollama`
+- Embedded models: `_internal/resources/ollama/models/`
+- Active model pointer: `assets/ollama/models/.active_model`
 
-- The build script keeps the PyInstaller work directory outside of the repo so the
-  tree stays clean. Delete `.pyi-build/` if you want to reclaim space.
-- The submodule pointer is part of the private repo history. Remember to commit it
-  alongside the release artifacts and any packaging metadata changes.
-- The bundled Ollama bits stay self-contained. When exporting the cache, set
-  `OLLAMA_MODELS=dist/noctics-core/_internal/resources/ollama/models` so the
-  runtime uses the embedded aliases.
+## Clean-up + signage
+- `.pyi-build/` holds intermediate junk—nuke it if space gets tight.
+- Generate checksums:
+  ```bash
+  find dist/noctics-core -type f -print0 | sort -z | xargs -0 sha256sum > release/dist.sha256
+  ```
+- Sign the checksum file (GPG, minisign, pick your poison) and stash both alongside the bundle.
+
+## Pro tips
+- `scripts/build_centi.sh` / `build_micro.sh` / `build_nano.sh` are just presets if
+  you need single-model bundles fast.
+- The bundled Ollama stays self-contained. Point `OLLAMA_MODELS` at the embedded
+  path when running smoke tests:
+  ```bash
+  export OLLAMA_MODELS=dist/noctics-core/_internal/resources/ollama/models
+  ./dist/noctics-core/_internal/resources/ollama/bin/ollama serve --host 127.0.0.1:12570
+  ```
+- Keep the submodule pointer commit with the release; auditors will thank you later.
+
+Ship smart, sign everything, and don’t forget to trash talk the changelog.

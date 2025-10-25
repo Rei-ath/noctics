@@ -124,7 +124,7 @@ class OpenAIInstrument(BaseInstrument):
             return True
         return False
 
-    # Routing helpers ----------------------------------------------------
+    # Routing utilities --------------------------------------------------
     def _use_responses_api(self) -> bool:
         model_l = self.model.lower()
         return model_l.startswith(("gpt-4.1", "gpt-4o", "gpt-5", "o1"))

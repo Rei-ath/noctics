@@ -1,4 +1,4 @@
-"""Base classes and helpers for Central instruments."""
+"""Base classes and utilities for Central instruments."""
 
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ class BaseInstrument:
     ) -> InstrumentResponse:
         raise NotImplementedError
 
-    # Utility helpers -----------------------------------------------------
+    # Utility routines ----------------------------------------------------
     @staticmethod
     def _flatten_text_content(content: Any) -> str:
         if content is None:

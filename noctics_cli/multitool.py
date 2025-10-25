@@ -1,5 +1,5 @@
 """Multitool entrypoint that mirrors the Codex CLI UX while delegating to the
-existing Noctics chat client and session helpers."""
+existing Noctics chat client and session tooling."""
 
 from __future__ import annotations
 
@@ -11,23 +11,37 @@ from typing import List, Optional, Sequence
 
 def _ensure_local_core_path() -> None:
     """Add local source tree copies of the core packages to sys.path when present."""
-    repo_root = Path(__file__).resolve().parents[1]
-    candidates = [
-        repo_root / "core",
-        repo_root / "core_pyd",
-    ]
-    for candidate in candidates:
-        if candidate.is_dir():
-            path = str(candidate)
-            if path not in sys.path:
-                sys.path.insert(0, path)
-            if candidate.name == "core_pyd":
-                try:  # Ensure compiled modules register themselves.
-                    import importlib
 
-                    importlib.import_module("core_pyd")
-                except ImportError:
-                    pass
+    repo_root = Path(__file__).resolve().parents[1]
+    source_root = repo_root / "core"
+    binary_root = repo_root / "core_pinaries"
+
+    if source_root.is_dir():
+        source_path = str(source_root)
+        binary_resolved = binary_root.resolve() if binary_root.exists() else None
+
+        # Prefer pure-Python sources for local development.
+        if binary_resolved:
+            sys.path = [p for p in sys.path if Path(p).resolve() != binary_resolved]
+        if source_path not in sys.path:
+            sys.path.insert(0, source_path)
+
+        # Drop modules that might have been imported from the binary bundle.
+        for name, module in list(sys.modules.items()):
+            module_path = getattr(module, "__file__", "")
+            if module_path and binary_root.as_posix() in module_path:
+                sys.modules.pop(name, None)
+
+    if binary_root.is_dir():
+        binary_path = str(binary_root)
+        if binary_path not in sys.path:
+            sys.path.append(binary_path)
+        try:
+            import core_pinaries
+
+            core_pinaries.ensure_modules()
+        except Exception:
+            pass
 
 
 def _import_core_dependencies() -> None:
@@ -63,6 +77,7 @@ except ImportError:
             "Install it with `pip install noctics-core` or make sure the central modules are importable."
         ) from exc
 from noctics_cli.app import main as chat_main
+from noctics_cli.tui import main as tui_main
 
 
 def _print_root_help() -> None:
@@ -77,6 +92,7 @@ def _print_root_help() -> None:
         "  noctics [chat options]\n"
         "  noctics chat [options]\n"
         "  noctics sessions <subcommand>\n"
+        "  noctics tui\n"
         "  noctics version\n"
         "\n"
         "Common commands:\n"
@@ -235,6 +251,9 @@ def main(argv: Sequence[str]) -> int:
 
     if first == "sessions":
         return _run_sessions(argv[1:])
+
+    if first == "tui":
+        return tui_main(argv[1:])
 
     # Compatibility: fall back to the legacy chat parser when no subcommand is used.
     return _run_chat(argv)

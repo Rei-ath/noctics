@@ -1,33 +1,35 @@
-# Terminal Rendering Demo (Termux-friendly)
+# Terminal Render Demo (Termux approved)
 
-Quick experiment showing how far you can push visuals inside a text terminal—perfect for a Noctics-style TUI.
+Text mode doesn’t have to be boring. This experiment slings gradients and images
+inside a terminal, perfect for a future Noctics TUI.
 
-## Usage
-
-Run the interactive viewer:
+## Run it
 ```bash
 cd experiments/termux_render
-python demo_render.py  # add --animate or an image path if you like
+python demo_render.py            # add --animate or an image path if you’re feeling spicy
 ```
+
 Controls:
 - `q` quit
-- `a` toggle auto gradient animation
-- space: step one gradient frame
-- `g` switch to gradient mode
-- `i` show the loaded image (if provided)
-- `r` reset the gradient phase
+- `a` toggle auto animation
+- space → single-step the gradient
+- `g` gradient mode
+- `i` render the image (if provided)
+- `r` reset the phase
 
-Pass `--animate` to start animating immediately. Provide an image path to render it alongside the gradient (requires Pillow):
+Want instant motion?
 ```bash
-python demo_render.py ~/Pictures/sample.jpg --width 120 --height 40 --animate
+python demo_render.py --animate
 ```
-Install Pillow if you need image support:
+
+Drop in an image (needs Pillow):
 ```bash
 pip install pillow
+python demo_render.py ~/Pictures/sample.jpg --width 120 --height 40 --animate
 ```
 
-## Why it matters
-
-- Termux (and most modern terminals) understand 24‑bit color + Unicode, so you can draw “GUI-ish” elements, previews, even simple animations without leaving text mode.
-- Adapt `demo_render.py` to feed frames from Noctics sessions, hardware telemetry, or helper outputs to get a hacker-friendly dashboard.
-- For higher fidelity later, swap the renderer to Kitty/Sixel escape codes—the same pipeline can emit true image frames once the terminal supports it.
+## Why Nox cares
+- Modern terminals (Termux, kitty, wezterm) speak 24-bit color and Unicode blocks.
+- You can craft dashboards, previews, even faux-UI widgets without leaving text land.
+- Swap the renderer for Kitty/Sixel escapes later to push real image frames.
+- Tie the pipeline to session logs or hardware stats and you’ve got a hacker HUD ready for primetime.

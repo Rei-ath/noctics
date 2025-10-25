@@ -30,7 +30,7 @@
     {
       "id": "instrument_suggest",
       "prompt": "If you cannot answer locally with confidence, emit an [INSTRUMENT QUERY] asking an external model to summarize the key differences between GPT-4o and Qwen2.5 in terms of API styles and streaming support.",
-      "assistant_initial": "Requires an instrument to proceed; paste a helper response to continue.",
+      "assistant_initial": "Requires an instrument to proceed; paste an instrument response to continue.",
       "wants_instrument": true,
       "instrument_query": "Summarize the key differences between GPT-4o and Qwen2.5 in API styles and streaming support.",
       "instrument_model": "gpt-4o",

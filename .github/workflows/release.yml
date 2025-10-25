@@ -1,0 +1,50 @@
+name: Build Release Artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install build tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build nuitka
+
+      - name: Regenerate core binaries extensions
+        run: |
+          PYTHONPATH=core python -m nuitka --module core/central --include-package=central --include-package-data=central --output-dir=build/core_pinaries
+          PYTHONPATH=core python -m nuitka --module core/config --include-package=config --include-package-data=config --output-dir=build/core_pinaries
+          PYTHONPATH=core python -m nuitka --module core/inference --include-package=inference --include-package-data=inference --output-dir=build/core_pinaries
+          PYTHONPATH=core python -m nuitka --module core/interfaces --include-package=interfaces --include-package-data=interfaces --output-dir=build/core_pinaries
+          PYTHONPATH=core python -m nuitka --module core/noxl --include-package=noxl --include-package-data=noxl --output-dir=build/core_pinaries
+          find build/core_pinaries -maxdepth 1 -type f -name '*.so' -print -exec cp {} core_pinaries/ \;
+
+      - name: Build python packages
+        run: |
+          python -m build core
+          python -m build core_pinaries
+
+      - name: Generate checksums
+        run: |
+          mkdir -p release-artifacts
+          cp core/dist/* release-artifacts/
+          cp core_pinaries/dist/* release-artifacts/
+          (cd release-artifacts && sha256sum * > SHA256SUMS.txt)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: noctics-release
+          path: release-artifacts

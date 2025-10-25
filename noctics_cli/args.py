@@ -39,7 +39,7 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     parser.add_argument(
         "-S", "--system",
         default=None,
-        help="System message (defaults to memory/system_prompt.txt; ignored if --messages is used)",
+        help="System message (defaults to memory/system_prompt.md; ignored if --messages is used)",
     )
     parser.add_argument("-u", "--user", default=None, help="Optional initial user message")
     parser.add_argument(
@@ -89,7 +89,6 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     parser.add_argument(
         "-H",
         "--instrument",
-        "--helper",
         dest="instrument",
         default=None,
         help=(
@@ -156,12 +155,10 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         help="Run as the project developer (skip user onboarding and log as developer)",
     )
     default_anon = (
-        os.getenv("CENTRAL_INSTRUMENT_ANON", os.getenv("CENTRAL_HELPER_ANON", "1")).lower()
-        not in {"0", "false", "off", "no"}
+        os.getenv("CENTRAL_INSTRUMENT_ANON", "1").lower() not in {"0", "false", "off", "no"}
     )
     parser.add_argument(
         "--anon-instrument",
-        "--anon-helper",
         dest="anon_instrument",
         action="store_true",
         default=default_anon,
@@ -169,7 +166,6 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "--no-anon-instrument",
-        "--no-anon-helper",
         dest="anon_instrument",
         action="store_false",
         help="Disable the reserved instrument sanitization toggle",

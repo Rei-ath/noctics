@@ -24,7 +24,7 @@ Noctics Roadmap Toward $1M Asset Value
 
 4. Observability & Operations
 ----------------------------
-- Emit optional Prometheus/OpenTelemetry hooks for sessions, latency, and helper usage.
+- Emit optional Prometheus/OpenTelemetry hooks for sessions, latency, and instrument usage.
 - Document retention policies and JSONL schemas for enterprise compliance.
 
 5. Traction & GTM

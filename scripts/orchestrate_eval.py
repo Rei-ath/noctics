@@ -289,7 +289,7 @@ def main(argv: List[str]) -> int:
                         "[INSTRUMENT QUERY]\n"
                         "Summarize the key differences between GPT-4o and Qwen2.5 APIs and streaming.\n"
                         "[/INSTRUMENT QUERY]\n"
-                        "Requires an instrument to proceed; paste a helper response to continue."
+                        "Requires an instrument to proceed; paste an instrument response to continue."
                     )
                 else:
                     text = "A concise summary: " + user_text[:80]

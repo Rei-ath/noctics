@@ -65,10 +65,10 @@ class _StubTransport(LLMTransport):
         return reply, None
 
 
-def test_client_process_helper_result_path() -> None:
+def test_client_process_instrument_result_path() -> None:
     stub = _StubTransport()
     client = ChatClient(stream=False, enable_logging=False, transport=stub)
-    out = client.process_helper_result("helper text")
+    out = client.process_instrument_result("instrument text")
     assert_eq(out, "Answer")
 
 
@@ -77,7 +77,7 @@ def main() -> int:
         test_clean_public_reply_instrument_unwrap,
         test_clean_public_reply_instrument_aux_strip,
         test_clean_public_reply_preserves_code_fences,
-        test_client_process_helper_result_path,
+        test_client_process_instrument_result_path,
     ]
     for fn in tests:
         fn()
@@ -87,4 +87,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

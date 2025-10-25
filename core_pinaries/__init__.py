@@ -1,7 +1,7 @@
 """
 Binary distribution shim for the Noctics core packages.
 
-Importing ``core_pyd`` ensures the compiled ``central``, ``config``,
+Importing ``core_pinaries`` ensures the compiled ``central``, ``config``,
 ``inference``, ``interfaces``, and ``noxl`` extension modules are registered so downstream code can
 ``import central`` without accessing the Python sources.
 """

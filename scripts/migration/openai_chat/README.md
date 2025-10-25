@@ -1,47 +1,42 @@
-# OpenAI → Noctics Migration Toolkit
+# ChatGPT Export Wrangler
 
-Tools for inspecting and converting OpenAI ChatGPT exports (`conversations.json`) into Noctics-compatible session logs without mixing them with native sessions.
+Drag your OpenAI `conversations.json` files through this funnel and get clean
+Noctics session logs without polluting the live vault.
 
-## Layout
-
+## Drop zones
 ```
-data/openai_chat_exports/       # drop ChatGPT export files here
-scripts/migration/openai_chat/  # utilities and CLI wrappers
-memory/imported/openai/         # migration output (kept separate from runtime sessions)
+data/openai_chat_exports/       # toss raw exports here
+scripts/migration/openai_chat/  # these tools
+memory/imported/openai/         # output lives here, separate from runtime sessions
 ```
 
-## Preview a Conversation
-
+## Peek before you import
 ```bash
 python scripts/migration/openai_chat/preview_conversation.py \
   --export data/openai_chat_exports/conversations.json \
   --index 0 --max-chars 120
 ```
-
 Flags:
-- `--index` – pick by position (0-based)
-- `--id` – pick by conversation id
-- `--max-chars` – truncate message preview
+- `--index` or `--id` to pick the convo
+- `--max-chars` to keep the preview short enough for your terminal
 
-## Migrate to Noctics Format
-
+## Convert the goods
 ```bash
 python scripts/migration/openai_chat/migrate.py \
   --export data/openai_chat_exports/conversations.json \
   --index 0
 ```
+Options worth knowing:
+- `--all` – migrate every conversation
+- `--dry-run` – see the plan, touch nothing
+- `--max-turns N` – keep only the latest N turns in the active log (`0` keeps everything inline)
+- `--output-root PATH` – drop results somewhere else
 
-- Outputs JSONL + meta files under `memory/imported/openai/YYYY-MM-DD/`.
-- Use `--all` to convert every conversation.
-- Add `--dry-run` to see what would be written without touching disk.
-- Use `--max-turns N` (default 30) to keep only the latest N turns in the active log; set to `0` to keep the full history inline.
-- When a conversation is trimmed, a companion `<session>.full.jsonl` is written and the meta file records `full_history_path` so Central can pull older turns automatically later.
-- Use `--output-root` to change the destination directory.
+Outputs land under `memory/imported/openai/YYYY-MM-DD/` with JSONL turns plus a `.meta.json`
+that records the original IDs and source (`openai-chat-export`). Trimmed histories write a
+sidecar `<session>.full.jsonl` so Central can pull the rest when needed.
 
-Migrated sessions are tagged with `source: "openai-chat-export"` and stored outside `memory/sessions/`, so Noctics can tell imported logs apart from native runtime history.
-
-## Next Steps
-
-- Add filters (`--title-contains`, `--since`) if you want to cherry-pick batches.
-- Plug the pipeline into tests so future export format changes don’t break migration.
-- Build a helper command to copy selected imports into `memory/sessions/` if you ever want them visible inside Noctics’ interactive session browser.
+## Next moves
+- Add filters like `--title-contains` or `--since 2024-01-01` when you get picky.
+- Wrap the migration scripts in pytest cases so format changes don’t blindside us.
+- Build an instrument worker that copies curated imports into `memory/sessions/` for interactive browsing.

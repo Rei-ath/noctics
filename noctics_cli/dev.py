@@ -11,7 +11,7 @@ try:
     from central.config import get_runtime_config
 except ImportError as exc:  # pragma: no cover - dependency missing
     raise ImportError(
-        "Noctics CLI developer helpers require the noctics-core package. "
+        "Noctics CLI developer instruments require the noctics-core package. "
         "Install it with `pip install noctics-core` or ensure the central modules are importable."
     ) from exc
 

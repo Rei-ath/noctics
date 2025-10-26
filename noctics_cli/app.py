@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from copy import deepcopy
@@ -85,6 +86,7 @@ from .dev import (
     require_dev_passphrase,
     resolve_dev_passphrase,
 )
+from .hud import resolve_logo_lines
 
 RuntimeIdentity = _RuntimeIdentity
 resolve_runtime_identity = _resolve_runtime_identity
@@ -1061,94 +1063,140 @@ def main(argv: List[str]) -> int:
             args.system = user_line
 
     instrument_roster = get_instrument_candidates()
-    hardware_brief = hardware_info.replace("OS: ", "").split(";")[0][:22]
+    hardware_brief = hardware_info.replace("OS: ", "").split(";")[0].strip()
     if instrument_roster:
         roster_display = ", ".join(instrument_roster)
         automation_display = "ON" if instrument_automation_enabled() else "OFF"
     else:
         roster_display = "coming soon"
         automation_display = "coming soon"
-    roster_brief = roster_display[:38]
-    operator_name = identity.display_name[:22]
+    operator_name = identity.display_name
 
     runtime_meta = {
         "runtime": "",
         "endpoint": "",
-        "model": str(args.model)[:22],
-        "source": "configured"[:22],
+        "model": str(args.model),
+        "source": "configured",
     }
 
     def update_runtime_meta(url: str, model: str, source: str) -> None:
         runtime_label, runtime_endpoint = _describe_runtime_target(url)
-        runtime_meta["runtime"] = runtime_label[:22]
-        runtime_meta["endpoint"] = runtime_endpoint[:22]
-        runtime_meta["model"] = str(model)[:22]
-        runtime_meta["source"] = source[:22]
+        runtime_meta["runtime"] = runtime_label
+        runtime_meta["endpoint"] = runtime_endpoint
+        runtime_meta["model"] = str(model)
+        runtime_meta["source"] = source
 
     update_runtime_meta(args.url, args.model, "configured")
 
     def print_status_block() -> None:
         if not interactive:
             return
-        automation = automation_display
-        roster = roster_display[:38]
+        term_columns = shutil.get_terminal_size(fallback=(80, 24)).columns
         session_info = cmd_list_sessions()
         session_count = len(session_info)
         header = persona.central_name
-        logo_lines = [
-            " _   _   ___    __  __  ",
-            "| \\ | | / _ \\  \\ \\/ /  ",
-            "|  \\| || | | |  >  <   ",
-            "| |\\  || |_| | / /\\ \\  ",
-            "|_| \\_| \\___/ /_/  \\_\\ ",
+        logo_lines = resolve_logo_lines(style_hint=persona.variant_name)
+        automation = automation_display
+        roster_text = roster_display or "coming soon"
+        info_fields = [
+            ("Version", __version__),
+            ("Operator", operator_name),
+            ("Hardware", hardware_brief),
+            ("Runtime", runtime_meta["runtime"]),
+            ("Runtime Source", runtime_meta["source"]),
+            ("Endpoint", runtime_meta["endpoint"]),
+            ("Model", runtime_meta["model"]),
+            ("Model Target", persona.model_target),
+            ("Persona", persona.central_name),
+            ("Scale", persona.scale_label),
+            ("Variant", persona.variant_name),
+            ("Tagline", persona.tagline),
+            ("Instrument Auto", automation),
+            ("Instrument Roster", roster_text),
+            ("Sessions Saved", str(session_count)),
         ]
-        status_lines = [
-            color("╔════════════════════════════════════════════════════════╗", fg="cyan", bold=True),
-            color(f"║ {header.center(52)} ║", fg="cyan", bold=True),
-            color("╠════════════════════════════════════════════════════════╣", fg="cyan"),
-        ]
-        status_lines.extend(
-            color(f"║ {line.center(52)} ║", fg="cyan", bold=True) for line in logo_lines
-        )
-        status_lines.extend([
-            color("╠════════════════════════════════════════════════════════╣", fg="cyan"),
-            color(f"║ Version        : {__version__:<38}║", fg="cyan"),
-            color(f"║ Operator       : {operator_name:<38}║", fg="cyan"),
-            color(f"║ Hardware       : {hardware_brief:<38}║", fg="cyan"),
-            color(f"║ Runtime        : {runtime_meta['runtime']:<38}║", fg="cyan"),
-            color(f"║ Runtime Source : {runtime_meta['source']:<38}║", fg="cyan"),
-            color(f"║ Endpoint       : {runtime_meta['endpoint']:<38}║", fg="cyan"),
-            color(f"║ Model          : {runtime_meta['model']:<38}║", fg="cyan"),
-            color(f"║ Model Target   : {persona.model_target[:38]:<38}║", fg="cyan"),
-            color(f"║ Persona        : {persona.central_name[:38]:<38}║", fg="cyan"),
-            color(f"║ Scale          : {persona.scale_label[:38]:<38}║", fg="cyan"),
-            color(f"║ Variant        : {persona.variant_name[:38]:<38}║", fg="cyan"),
-            color(f"║ Tagline        : {persona.tagline[:38]:<38}║", fg="cyan"),
-            color(f"║ Instrument Auto    : {automation:<38}║", fg="cyan"),
-            color(f"║ Instrument Roster  : {roster_brief:<38}║", fg="cyan"),
-            color(f"║ Sessions Saved : {session_count:<38}║", fg="cyan"),
-            color("╠════════════════════════════════════════════════════════╣", fg="cyan"),
-            color(
-                f"║ {(persona.central_name.upper() + ' · ' + persona.variant_display).center(52)} ║",
-                fg="cyan",
-                bold=True,
-            ),
-            color("╚════════════════════════════════════════════════════════╝", fg="cyan", bold=True),
-        ])
+
+        developer_line: Optional[str] = None
         if getattr(args, "dev", False):
             dev_identity = resolve_developer_identity()
-            developer_name = dev_identity.display_name[:38]
-            status_lines.insert(
-                2,
-                color(f"║ Developer      : {developer_name:<38}║", fg="cyan"),
-            )
+            developer_line = f"Developer      : {dev_identity.display_name}"
 
-        seen = set()
-        for line in status_lines:
-            if line in seen:
+        footer_text = f"{persona.central_name.upper()} · {persona.variant_display}"
+
+        content_specs: List[Dict[str, Any]] = []
+        content_specs.append({"text": header, "align": "center", "bold": True})
+        if developer_line:
+            content_specs.append({"text": developer_line, "align": "left", "bold": False})
+        content_specs.append({"separator": True})
+        for art_line in logo_lines:
+            content_specs.append({"text": art_line, "align": "center", "bold": True})
+        content_specs.append({"separator": True})
+        for label, value in info_fields:
+            content_specs.append(
+                {
+                    "text": f"{label:<16}: {value}",
+                    "align": "left",
+                    "bold": False,
+                }
+            )
+        content_specs.append({"separator": True})
+        content_specs.append({"text": footer_text, "align": "center", "bold": True})
+
+        plain_lines = [
+            spec["text"]
+            for spec in content_specs
+            if not spec.get("separator") and isinstance(spec.get("text"), str)
+        ]
+        if not plain_lines:
+            return
+
+        max_line_length = max(len(line) for line in plain_lines)
+        available_width = max(term_columns - 4, 10)
+        inner_width = min(max_line_length, available_width)
+        preferred_min_width = 40
+        if available_width >= preferred_min_width:
+            inner_width = max(inner_width, min(preferred_min_width, available_width))
+        line_width = inner_width + 4
+        margin = max((term_columns - line_width) // 2, 0)
+
+        def truncate(text: str) -> str:
+            if len(text) <= inner_width:
+                return text
+            if inner_width <= 1:
+                return text[:inner_width]
+            return text[: inner_width - 1] + "…"
+
+        def render_content(text: str, *, align: str, bold: bool) -> str:
+            clipped = truncate(text)
+            if align == "center":
+                padded = clipped.center(inner_width)
+            elif align == "right":
+                padded = clipped.rjust(inner_width)
+            else:
+                padded = clipped.ljust(inner_width)
+            return color(f"║ {padded} ║", fg="cyan", bold=bold)
+
+        separator_line = color("╠" + "═" * (inner_width + 2) + "╣", fg="cyan")
+        top_border = color("╔" + "═" * (inner_width + 2) + "╗", fg="cyan", bold=True)
+        bottom_border = color("╚" + "═" * (inner_width + 2) + "╝", fg="cyan", bold=True)
+
+        rendered_lines: List[str] = [top_border]
+        for spec in content_specs:
+            if spec.get("separator"):
+                rendered_lines.append(separator_line)
                 continue
-            seen.add(line)
-            print(line)
+            text = spec["text"]
+            align = spec.get("align", "left")
+            bold = bool(spec.get("bold", False))
+            rendered_lines.append(render_content(text, align=align, bold=bold))
+        rendered_lines.append(bottom_border)
+
+        seen: set[str] = set()
+        for raw_line in rendered_lines:
+            if raw_line in seen:
+                continue
+            seen.add(raw_line)
+            print(" " * margin + raw_line)
 
     if (sys_prompt_text or identity_line):
         # Recompute for display after any identity injection

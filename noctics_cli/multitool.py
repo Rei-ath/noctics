@@ -16,7 +16,8 @@ def _ensure_local_core_path() -> None:
     source_root = repo_root / "core"
     binary_root = repo_root / "core_pinaries"
 
-    if source_root.is_dir():
+    prefer_source = source_root.is_dir()
+    if prefer_source:
         source_path = str(source_root)
         binary_resolved = binary_root.resolve() if binary_root.exists() else None
 
@@ -36,12 +37,13 @@ def _ensure_local_core_path() -> None:
         binary_path = str(binary_root)
         if binary_path not in sys.path:
             sys.path.append(binary_path)
-        try:
-            import core_pinaries
+        if not prefer_source:
+            try:
+                import core_pinaries
 
-            core_pinaries.ensure_modules()
-        except Exception:
-            pass
+                core_pinaries.ensure_modules()
+            except Exception:
+                pass
 
 
 def _import_core_dependencies() -> None:

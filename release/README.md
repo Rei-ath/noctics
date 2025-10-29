@@ -1,46 +1,63 @@
-# Release Rituals (private eyes only)
+# Release guide
 
-Nox here. This folder is how we turn the polite public `noctics-core` into a
-sealed binary drop dripping with Qwen3 juice and Ollama runtime bits.
+This directory turns the public `noctics-core` source into the closed-weight
+bundle we ship to partners. Follow the playbook; everything else is garnish.
 
-## High-level hustle
-1. Ship-ready code lives in the `core/` submodule. Commit and push there first.
-2. From the repo root run `./scripts/update_core.sh <branch>` to bump the pointer.
-3. Prep assets: `./scripts/prepare_assets.sh` (or let `build_release.sh` call it).
-4. Bake the bundle: `./scripts/build_release.sh`.
-5. Sign the artifacts, zip them, tag the release, and stash the checksums.
+## Step-by-step
+1. **Freeze the code** – land changes in the `core/` submodule, push, then from
+   the repo root run `./scripts/update_core.sh <branch>` to bump the pointer.
+2. **Prep assets** – `./scripts/prepare_assets.sh` stages Ollama and the default
+   GGUF model. Skip downloads with `NOCTICS_SKIP_ASSET_PREP=1` if you already
+   have them cached.
+3. **Build** – `./scripts/build_release.sh` now bundles all CLI modules, the
+   runtime hook, and the selected model into `dist/noctics-core/`.
+4. **Sign** – create checksums, sign them, zip the bundle, and stash everything
+   under `release/` until security signs off.
+5. **Tag & publish** – push the submodule bump + release notes, create the tag,
+   then upload the artifacts.
 
-## Model buffet
-Set `MODEL_SPECS` before building to remap aliases:
-```
+## Customising models
+Remap aliases before building:
+
+```bash
 MODEL_SPECS="qwen3:8b=>centi-nox qwen3:4b=>milli-nox qwen3:1.7b=>micro-nox qwen3:0.6b=>nano-nox" \
   ./scripts/build_release.sh
 ```
-Already staged blobs? `NOCTICS_SKIP_ASSET_PREP=1` keeps the script from pulling again.
 
-## Outputs
-- PyInstaller drop: `dist/noctics-core/`
-- Embedded runtime: `_internal/resources/ollama/bin/ollama`
-- Embedded models: `_internal/resources/ollama/models/`
-- Active model pointer: `assets/ollama/models/.active_model`
+Reusing staged blobs?
 
-## Clean-up + signage
-- `.pyi-build/` holds intermediate junk—nuke it if space gets tight.
+```bash
+NOCTICS_SKIP_ASSET_PREP=1 ./scripts/build_release.sh
+```
+
+## What you get
+- `dist/noctics-core/noctics-core` – the PyInstaller launcher. When no
+  `CENTRAL_LLM_URL` is supplied it starts the embedded Ollama binary,
+  creates/loads the `centi-nox` alias (Qwen 0.5B), and targets the local
+  endpoint. Provide an external URL (e.g. OpenAI) to skip the embedded runtime
+  and honour your remote model.
+- `dist/noctics-core/_internal/resources/models` – shipped GGUF weights.
+- `dist/noctics-core/_internal/resources/runtime/centi-nox.modelfile` – the
+  ModelFile used to hydrate the alias on first run.
+
+## Housekeeping
+- Intermediate build products live in `.pyi-build/`; delete when space is tight.
 - Generate checksums:
+
   ```bash
   find dist/noctics-core -type f -print0 | sort -z | xargs -0 sha256sum > release/dist.sha256
   ```
-- Sign the checksum file (GPG, minisign, pick your poison) and stash both alongside the bundle.
 
-## Pro tips
-- `scripts/build_centi.sh` / `build_micro.sh` / `build_nano.sh` are just presets if
-  you need single-model bundles fast.
-- The bundled Ollama stays self-contained. Point `OLLAMA_MODELS` at the embedded
-  path when running smoke tests:
+- Sign `release/dist.sha256` with your weapon of choice (GPG, minisign, etc.).
+
+## Quick presets
+- `scripts/build_centi.sh`, `build_micro.sh`, `build_nano.sh` just wrap the main
+  script with preset `MODEL_SPECS` values.
+- For smoke tests, point `OLLAMA_MODELS` at the embedded folder:
+
   ```bash
   export OLLAMA_MODELS=dist/noctics-core/_internal/resources/ollama/models
   ./dist/noctics-core/_internal/resources/ollama/bin/ollama serve --host 127.0.0.1:12570
   ```
-- Keep the submodule pointer commit with the release; auditors will thank you later.
 
-Ship smart, sign everything, and don’t forget to trash talk the changelog.
+Happy shipping.

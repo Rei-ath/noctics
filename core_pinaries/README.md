@@ -1,7 +1,7 @@
-# Noctics Core (Binary build)
+# Noctics Core (binary build)
 
-Hey, I’m the compiled payload. Install me when you want `import central` without
-showing anyone the actual source.
+Version `0.1.39` mirrors the public `noctics-core` tree at the matching commit
+count. Install this when you need `import central` without exposing sources.
 
 ## What’s inside
 - Nuitka-built extensions for `central`, `config`, `inference`, `interfaces`, `noxl`

@@ -6,7 +6,7 @@ import os
 import sys
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_data_files
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 block_cipher = None
 
@@ -58,8 +58,13 @@ def include_directory(relative_dir):
     return records
 
 DATAS = []
-for package in ("central", "interfaces", "noxl", "noctics_cli"):
+for package in ("central", "interfaces", "noxl", "noctics_cli", "instruments"):
     DATAS.extend(package_data_for(package))
+
+HIDDEN_IMPORTS = []
+for package in ("central", "interfaces", "noxl", "noctics_cli", "instruments"):
+    HIDDEN_IMPORTS.extend(collect_submodules(package))
+HIDDEN_IMPORTS = sorted(set(HIDDEN_IMPORTS))
 
 for extra_dir in ("config", "datasets", "third_party", "models", "memory"):  # models may host prompt templates
     DATAS.extend(include_directory(extra_dir))
@@ -105,7 +110,7 @@ analysis = Analysis(
     pathex=[str(CORE_ROOT)],
     binaries=BINARIES,
     datas=DATAS,
-    hiddenimports=[],
+    hiddenimports=HIDDEN_IMPORTS,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=RUNTIME_HOOKS,

@@ -231,15 +231,17 @@ def _run_sessions(argv: Sequence[str]) -> int:
     return 1
 
 
-def main(argv: Sequence[str]) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     """Entrypoint mirroring the Codex CLI multitool UX."""
 
     load_local_dotenv(Path(__file__).resolve().parent)
 
-    if not argv:
+    tokens = list(argv) if argv is not None else list(sys.argv[1:])
+
+    if not tokens:
         return _run_chat([])
 
-    first = argv[0]
+    first = tokens[0]
     if first in {"-h", "--help", "help"}:
         _print_root_help()
         return 0
@@ -249,13 +251,13 @@ def main(argv: Sequence[str]) -> int:
         return 0
 
     if first == "chat":
-        return _run_chat(argv[1:])
+        return _run_chat(tokens[1:])
 
     if first == "sessions":
-        return _run_sessions(argv[1:])
+        return _run_sessions(tokens[1:])
 
     if first == "tui":
-        return tui_main(argv[1:])
+        return tui_main(tokens[1:])
 
     # Compatibility: fall back to the legacy chat parser when no subcommand is used.
-    return _run_chat(argv)
+    return _run_chat(tokens)

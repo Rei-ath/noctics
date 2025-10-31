@@ -8,7 +8,7 @@ BUILD_DIR="$ROOT_DIR/.pyi-build"
 MODEL_POINTER_FILE="$ROOT_DIR/assets/ollama/models/.active_model"
 MODEL_PATH="${MODEL_PATH:-}"
 DEFAULT_MODEL_NAME="micro-nox"
-ENV_FILE="$ROOT_DIR/.env.micro"
+FALLBACK_FILE="$ROOT_DIR/assets/runtime/fallback_remote_url.txt"
 
 if [[ -z "$MODEL_PATH" ]]; then
   MODEL_PATH="${1:-}"
@@ -54,13 +54,19 @@ fi
 mkdir -p "$DIST_DIR" "$BUILD_DIR"
 rm -rf "$DIST_DIR/micro-noctics"
 
+if [[ -n "${NOCTICS_FALLBACK_REMOTE_URL:-}" ]]; then
+  printf '%s\n' "$NOCTICS_FALLBACK_REMOTE_URL" > "$FALLBACK_FILE"
+elif [[ ! -f "$FALLBACK_FILE" ]]; then
+  printf '%s\n' "https://layma.noctics.ai/api/generate" > "$FALLBACK_FILE"
+fi
+
 MODEL_FILENAME="$(basename "$MODEL_PATH")"
 NOCTICS_MODEL_PATH="$(cd "$(dirname "$MODEL_PATH")" && pwd)/$MODEL_FILENAME"
 
-NOCTICS_ENV_FILE="$ENV_FILE" \
 NOCTICS_MODEL_PATH="$NOCTICS_MODEL_PATH" \
 NOCTICS_MODEL_NAME="$MODEL_FILENAME" \
 NOCTICS_ROOT="$ROOT_DIR" \
+NOCTICS_SKIP_EMBEDDED_OLLAMA=1 \
 pyinstaller "$SPEC_FILE" \
   --distpath "$DIST_DIR" \
   --workpath "$BUILD_DIR" \
@@ -68,3 +74,8 @@ pyinstaller "$SPEC_FILE" \
   --noconfirm
 
 echo "[build_micro] Micro build available under $DIST_DIR/micro-noctics" >&2
+
+if [[ -d "$DIST_DIR/micro-noctics" ]]; then
+  "$ROOT_DIR/scripts/post_build_checksums.sh" "$DIST_DIR/micro-noctics" "$DIST_DIR/micro-noctics.SHA256SUMS" || true
+  install -Dm644 "$ROOT_DIR/THIRD_PARTY_LICENSES.md" "$DIST_DIR/micro-noctics/licenses/THIRD_PARTY_LICENSES.md"
+fi

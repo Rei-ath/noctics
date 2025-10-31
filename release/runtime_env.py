@@ -4,7 +4,7 @@ When running from the PyInstaller bundle, this module will:
 1. Load optional environment overrides from resources/env/.env.
 2. Start the embedded Ollama runtime if no external URL is configured.
 3. Ensure the shipped model alias exists (creating it on first run).
-4. Export CENTRAL_LLM_URL / CENTRAL_LLM_MODEL so the CLI can connect.
+4. Export NOX_LLM_URL / NOX_LLM_MODEL so the CLI can connect.
 """
 
 from __future__ import annotations
@@ -13,8 +13,20 @@ import atexit
 import os
 import socket
 import subprocess
+import sys
 import time
 from pathlib import Path
+
+class EmbeddedRuntimeError(RuntimeError):
+    """Raised when the embedded Ollama runtime cannot be started."""
+
+
+def _warn(message: str) -> None:
+    try:
+        print(f"[noctics] {message}", file=sys.stderr)
+    except Exception:
+        pass
+
 
 try:
     from urllib.request import urlopen
@@ -61,9 +73,14 @@ def _pick_port() -> int:
                 return value
         except Exception:
             pass
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("127.0.0.1", 0))
+            return sock.getsockname()[1]
+    except OSError as exc:  # pragma: no cover - requires restricted network sandbox
+        raise EmbeddedRuntimeError(
+            "Unable to reserve a loopback port for the embedded Ollama runtime."
+        ) from exc
 
 
 def _wait_for_endpoint(url: str, timeout: float = 20.0) -> bool:
@@ -203,27 +220,50 @@ def _prepare_environment() -> None:
 
     runtime_dir = resources_root / "runtime"
     alias_file = runtime_dir / "primary_alias.txt"
-    alias = os.environ.get("CENTRAL_LLM_MODEL") or _read_text(alias_file, "centi-nox")
+    alias = os.environ.get("NOX_LLM_MODEL") or _read_text(alias_file, "centi-nox")
     modelfile = runtime_dir / f"{alias}.modelfile"
+    fallback_remote_url = os.environ.get("NOCTICS_FALLBACK_REMOTE_URL") or _read_text(
+        runtime_dir / "fallback_remote_url.txt", ""
+    )
+    fallback_remote_url = fallback_remote_url.strip() or None
 
-    existing_url = os.environ.get("CENTRAL_LLM_URL")
+    existing_url = os.environ.get("NOX_LLM_URL")
     if existing_url:
         if not _is_local_url(existing_url):
-            os.environ.setdefault("CENTRAL_LLM_MODEL", alias)
+            os.environ.setdefault("NOX_LLM_MODEL", alias)
             return
         if os.environ.get("NOCTICS_FORCE_EMBEDDED_OLLAMA") != "1":
-            os.environ.setdefault("CENTRAL_LLM_MODEL", alias)
+            os.environ.setdefault("NOX_LLM_MODEL", alias)
             return
 
     if os.environ.get("NOCTICS_SKIP_EMBEDDED_OLLAMA") == "1":
-        os.environ.setdefault("CENTRAL_LLM_MODEL", alias)
+        os.environ.setdefault("NOX_LLM_MODEL", alias)
         return
 
-    process, env, host = _start_embedded_ollama(
-        root=resources_root,
-        alias=alias,
-        modelfile=modelfile,
-    )
+    try:
+        process, env, host = _start_embedded_ollama(
+            root=resources_root,
+            alias=alias,
+            modelfile=modelfile,
+        )
+    except EmbeddedRuntimeError as exc:
+        if fallback_remote_url:
+            _warn(
+                f"{exc} Falling back to external endpoint: {fallback_remote_url}. "
+                "Set NOX_LLM_URL or distribute an env override to silence this message."
+            )
+            os.environ.setdefault("NOX_LLM_MODEL", alias)
+            os.environ.setdefault("NOX_LLM_URL", fallback_remote_url)
+            return
+        if os.environ.get("NOCTICS_REQUIRE_EMBEDDED_OLLAMA") == "1":
+            raise
+        raise SystemExit(
+            (
+                "Unable to start the embedded Ollama runtime (restricted networking). "
+                "Export NOX_LLM_URL for your PropelY deployment or set "
+                "NOCTICS_SKIP_EMBEDDED_OLLAMA=1 to suppress this check."
+            )
+        ) from exc
 
     def _cleanup(proc: subprocess.Popen[bytes]) -> None:
         try:
@@ -233,8 +273,8 @@ def _prepare_environment() -> None:
 
     atexit.register(_cleanup, process)
 
-    os.environ.setdefault("CENTRAL_LLM_MODEL", alias)
-    os.environ.setdefault("CENTRAL_LLM_URL", f"http://{host}/api/generate")
+    os.environ.setdefault("NOX_LLM_MODEL", alias)
+    os.environ.setdefault("NOX_LLM_URL", f"http://{host}/api/generate")
     os.environ.setdefault("OLLAMA_MODELS", env["OLLAMA_MODELS"])
 
 

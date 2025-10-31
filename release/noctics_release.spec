@@ -70,6 +70,9 @@ for extra_dir in ("config", "datasets", "third_party", "models", "memory"):  # m
     DATAS.extend(include_directory(extra_dir))
 
 DATAS.extend(MODEL_FILES)
+LICENSE_FILE = ROOT / "THIRD_PARTY_LICENSES.md"
+if LICENSE_FILE.exists():
+    DATAS.append((str(LICENSE_FILE), "licenses/THIRD_PARTY_LICENSES.md"))
 
 OLLAMA_BIN = ROOT / "assets" / "ollama" / "bin" / "ollama"
 OLLAMA_LIB = ROOT / "assets" / "ollama" / "lib" / "libollama.so"

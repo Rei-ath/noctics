@@ -27,6 +27,8 @@ except Exception:  # pragma: no cover - platform without readline
     readline = None  # type: ignore
 from pathlib import Path
 
+from nox_env import get_env
+
 try:
     # No direct HTTP in the CLI; core handles requests
     from central.colors import color
@@ -70,6 +72,7 @@ try:
     )
     from central.commands.help_cmd import print_help as cmd_print_help
     from interfaces.dotenv import load_local_dotenv
+    from noctics_cli.setup import ensure_global_config_home, maybe_run_first_launch_setup
     from interfaces.dev_identity import resolve_developer_identity
     from interfaces.paths import resolve_memory_root, resolve_sessions_root
     from central.system_info import hardware_summary
@@ -80,9 +83,9 @@ except ImportError as exc:  # pragma: no cover - dependency missing
         "Install it with `pip install noctics-core` or ensure the central modules are on PYTHONPATH."
     ) from exc
 from .metrics import record_cli_run
-from .args import DEFAULT_URL, parse_args
+from .args import parse_args
 from .dev import (
-    CENTRAL_DEV_PASSPHRASE_ATTEMPT_ENV,
+    NOX_DEV_PASSPHRASE_ATTEMPT_ENV,
     require_dev_passphrase,
     resolve_dev_passphrase,
 )
@@ -99,7 +102,6 @@ __all__ = [
 ]
 
 
-DEFAULT_URL = CORE_DEFAULT_URL
 
 
 THINK_OPEN = "<think>"
@@ -128,7 +130,7 @@ def _configured_instrument_roster() -> List[str]:
 
     env_tokens = [
         token.strip()
-        for token in (os.getenv("CENTRAL_INSTRUMENTS") or "").split(",")
+        for token in (get_env("NOX_INSTRUMENTS") or "").split(",")
         if token.strip()
     ]
     if env_tokens:
@@ -211,9 +213,9 @@ def _build_runtime_candidates(args: argparse.Namespace) -> List[RuntimeCandidate
     )
     candidates: List[RuntimeCandidate] = [primary]
 
-    fallback_urls_env = os.getenv("CENTRAL_LLM_FALLBACK_URLS", "")
-    fallback_models_env = os.getenv("CENTRAL_LLM_FALLBACK_MODELS", "")
-    fallback_api_keys_env = os.getenv("CENTRAL_LLM_FALLBACK_API_KEYS", "")
+    fallback_urls_env = get_env("NOX_LLM_FALLBACK_URLS") or ""
+    fallback_models_env = get_env("NOX_LLM_FALLBACK_MODELS") or ""
+    fallback_api_keys_env = get_env("NOX_LLM_FALLBACK_API_KEYS") or ""
 
     fallback_urls = [value.strip() for value in fallback_urls_env.split(",") if value.strip()]
     fallback_models = [value.strip() for value in fallback_models_env.split(",") if value.strip()]
@@ -233,8 +235,8 @@ def _build_runtime_candidates(args: argparse.Namespace) -> List[RuntimeCandidate
             )
         )
 
-    local_url = os.getenv("CENTRAL_LOCAL_LLM_URL", DEFAULT_URL)
-    local_model = os.getenv("CENTRAL_LOCAL_LLM_MODEL", "")
+    local_url = get_env("NOX_LOCAL_LLM_URL") or CORE_DEFAULT_URL
+    local_model = get_env("NOX_LOCAL_LLM_MODEL") or ""
     if local_url and not any(_urls_equivalent(local_url, existing.url) for existing in candidates):
         candidates.append(
             RuntimeCandidate(
@@ -685,15 +687,27 @@ def select_session_interactively(
 
 
 def main(argv: List[str]) -> int:
+    ensure_global_config_home()
     # Load environment from a local .env file by default
     load_local_dotenv(Path(__file__).resolve().parent)
 
     args = parse_args(argv)
+
+    if getattr(args, "version", False):
+        print(__version__)
+        return 0
+
+    if getattr(args, "setup", False):
+        maybe_run_first_launch_setup(interactive=sys.stdin.isatty(), force=True)
+        return 0
+
     persona = resolve_persona(args.model)
+
+    maybe_run_first_launch_setup(interactive=sys.stdin.isatty())
 
     if getattr(args, "dev", False):
         dev_passphrase = resolve_dev_passphrase()
-        interactive = sys.stdin.isatty() and os.getenv(CENTRAL_DEV_PASSPHRASE_ATTEMPT_ENV) is None
+        interactive = sys.stdin.isatty() and get_env(NOX_DEV_PASSPHRASE_ATTEMPT_ENV) is None
         if not require_dev_passphrase(dev_passphrase, interactive=interactive):
             print(color("Developer mode locked.", fg="red", bold=True))
             return 1
@@ -702,10 +716,6 @@ def main(argv: List[str]) -> int:
         record_cli_run(resolve_memory_root(), __version__)
     except Exception:
         pass
-
-    if getattr(args, "version", False):
-        print(__version__)
-        return 0
 
     interactive = sys.stdin.isatty()
     original_label = (args.user_name or "").strip()
@@ -742,7 +752,7 @@ def main(argv: List[str]) -> int:
     hardware_line = f"Hardware context: {hardware_info}"
     instrument_auto_line = f"Instrument automation: {'ON' if instrument_auto_on else 'OFF'}"
     persona_line = (
-        f"Central persona: {persona.central_name} ({persona.scale_label}) — model target {persona.model_target}"
+        f"Nox persona: {persona.central_name} ({persona.scale_label}) — model target {persona.model_target}"
     )
 
     if args.stream is None:
@@ -976,7 +986,7 @@ def main(argv: List[str]) -> int:
                 args.system = (content + ("\n\n" if content else "") + hardware_line).strip()
         else:
             args.system = hardware_line
-    # Expose instrument automation status to Central as part of the system preamble
+    # Expose instrument automation status to Nox as part of the system preamble
     instrument_status_inserted = False
     for msg in messages:
         if isinstance(msg, dict) and msg.get("role") == "system" and instrument_auto_line in str(msg.get("content") or ""):
@@ -1206,7 +1216,7 @@ def main(argv: List[str]) -> int:
         else:
             sys_prompt_text = args.system
 
-    show_sys_prompt = os.getenv("CENTRAL_SHOW_SYSTEM_PROMPT", "")
+    show_sys_prompt = get_env("NOX_SHOW_SYSTEM_PROMPT") or ""
     if sys_prompt_text and show_sys_prompt.lower() in {"1", "true", "yes", "on"}:
         print(color("System Prompt:", fg="magenta", bold=True))
         print(color(sys_prompt_text, fg="magenta"))
@@ -1280,7 +1290,7 @@ def main(argv: List[str]) -> int:
                 label, endpoint = _describe_runtime_target(candidate.url)
                 target_stream = sys.stdout if interactive else sys.stderr
                 print(color(f"Runtime unavailable ({label} @ {endpoint}): {exc}", fg="red"), file=target_stream)
-            continue
+                continue
 
             client = client_candidate
             persona = client.persona
@@ -1301,7 +1311,7 @@ def main(argv: List[str]) -> int:
                 args.system = _remove_persona_line_from_text(args.system, last_persona_line)
 
             persona_line = (
-                f"Central persona: {persona.central_name} ({persona.scale_label}) — model target {persona.model_target}"
+                f"Nox persona: {persona.central_name} ({persona.scale_label}) — model target {persona.model_target}"
             )
             last_persona_line = persona_line
             if args.system:
@@ -1471,15 +1481,15 @@ def main(argv: List[str]) -> int:
 
     def notify_instrument_needed() -> None:
         status_line = describe_instrument_status()
-        message = f"Central requested an external instrument. {status_line}"
+        message = f"Nox requested an external instrument. {status_line}"
         if instrument_auto_on:
-            message += " Central will attempt to call the configured instrument automatically when available."
+            message += " Nox will attempt to call the configured instrument automatically when available."
         else:
             if not args.instrument and sys.stdin.isatty():
                 chosen = choose_instrument_interactively(args.instrument)
                 if chosen:
                     args.instrument = chosen
-            message += " Instrument automation is unavailable, so instruments cannot be reached right now. Central must respond with a local fallback."
+            message += " Instrument automation is unavailable, so instruments cannot be reached right now. Nox must respond with a local fallback."
         print(color(message, fg="yellow"))
 
     def one_turn(user_text: str) -> Optional[str]:
@@ -1514,7 +1524,7 @@ def main(argv: List[str]) -> int:
                     missing_model = missing_match.group(1)
                     hint = (
                         f"Model '{missing_model}' is unavailable at {failing_endpoint}. "
-                        f"Start your runtime and run `ollama pull {missing_model}` (or adjust CENTRAL_LLM_MODEL)."
+                        f"Start your runtime and run `ollama pull {missing_model}` (or adjust NOX_LLM_MODEL)."
                     )
                     print(color(hint, fg="yellow"), file=target_stream)
                 next_index = current_candidate_index + 1 if current_candidate_index >= 0 else 0
@@ -1523,7 +1533,7 @@ def main(argv: List[str]) -> int:
                     print(color(f"{exc}", fg="red"), file=target_stream)
                     print(
                         color(
-                            "Central could not process the request. Ensure the model endpoint is available and try again.",
+                            "Nox could not process the request. Ensure the model endpoint is available and try again.",
                             fg="yellow",
                         ),
                         file=target_stream,
@@ -1580,7 +1590,7 @@ def main(argv: List[str]) -> int:
         one_turn(initial_user)
 
     # Interactive loop
-    show_help_env = os.getenv("CENTRAL_SHOW_HELP", "")
+    show_help_env = get_env("NOX_SHOW_HELP") or ""
     if show_help_env.lower() in {"1", "true", "yes", "on"}:
         cmd_print_help(client, user_name=args.user_name)
         if sys.stdin.isatty() and readline is not None:
@@ -1840,3 +1850,8 @@ def main(argv: List[str]) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main(sys.argv[1:]))
+def build_identity_context(display_name: str, project_name: str) -> str:
+    return (
+        f"Developer identity: {display_name} is the creator and maintainer of {project_name}. "
+        "Address them by name, keep responses practical, and prioritise guidance that helps them evolve the assistant."
+    )

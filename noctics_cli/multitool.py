@@ -4,46 +4,66 @@ existing Noctics chat client and session tooling."""
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 from typing import List, Optional, Sequence
 
 
 def _ensure_local_core_path() -> None:
-    """Add local source tree copies of the core packages to sys.path when present."""
+    """Ensure the compiled core packages are importable, with opt-in source overrides for developers."""
 
     repo_root = Path(__file__).resolve().parents[1]
     source_root = repo_root / "core"
     binary_root = repo_root / "core_pinaries"
 
-    prefer_source = source_root.is_dir()
-    if prefer_source:
-        source_path = str(source_root)
-        binary_resolved = binary_root.resolve() if binary_root.exists() else None
+    use_source_override = os.getenv("NOCTICS_USE_CORE_SOURCE") == "1"
+    has_source = source_root.is_dir()
+    has_binary = binary_root.is_dir()
 
-        # Prefer pure-Python sources for local development.
-        if binary_resolved:
-            sys.path = [p for p in sys.path if Path(p).resolve() != binary_resolved]
-        if source_path not in sys.path:
-            sys.path.insert(0, source_path)
-
-        # Drop modules that might have been imported from the binary bundle.
+    def _purge_modules(root: Path) -> None:
+        root_posix = root.resolve().as_posix()
         for name, module in list(sys.modules.items()):
             module_path = getattr(module, "__file__", "")
-            if module_path and binary_root.as_posix() in module_path:
+            if not module_path:
+                continue
+            try:
+                resolved = Path(module_path).resolve().as_posix()
+            except Exception:
+                continue
+            if root_posix in resolved:
                 sys.modules.pop(name, None)
 
-    if binary_root.is_dir():
+    if has_binary and not use_source_override:
         binary_path = str(binary_root)
         if binary_path not in sys.path:
-            sys.path.append(binary_path)
-        if not prefer_source:
-            try:
-                import core_pinaries
+            sys.path.insert(0, binary_path)
+        if has_source:
+            _purge_modules(source_root)
+        try:
+            import core_pinaries
 
-                core_pinaries.ensure_modules()
-            except Exception:
-                pass
+            core_pinaries.ensure_modules()
+        except Exception:
+            pass
+        return
+
+    if has_source:
+        source_path = str(source_root)
+        if source_path not in sys.path:
+            sys.path.insert(0, source_path)
+        if has_binary:
+            _purge_modules(binary_root)
+    elif has_binary:
+        binary_path = str(binary_root)
+        if binary_path not in sys.path:
+            sys.path.insert(0, binary_path)
+        try:
+            import core_pinaries
+
+            core_pinaries.ensure_modules()
+        except Exception:
+            pass
 
 
 def _import_core_dependencies() -> None:
@@ -78,8 +98,8 @@ except ImportError:
             "Noctics CLI requires the noctics-core package. "
             "Install it with `pip install noctics-core` or make sure the central modules are importable."
         ) from exc
-from noctics_cli.app import main as chat_main
-from noctics_cli.tui import main as tui_main
+from noctics_cli.app import main as chat_main  # noqa: E402
+from noctics_cli.tui import main as tui_main  # noqa: E402
 
 
 def _print_root_help() -> None:

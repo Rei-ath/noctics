@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Benchmark Noctics (Central ChatClient) across multiple targets.
+Benchmark Noctics (Nox ChatClient) across multiple targets.
 
 Measures per-target:
 - total_time_s (non-stream) or total_time_s + ttft_s (stream)
@@ -26,7 +26,10 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from nox_env import get_env
+
 ROOT = Path(__file__).resolve().parents[1]
+CORE_ROOT = ROOT / "core"
 
 try:
     from central.core import ChatClient  # type: ignore
@@ -110,9 +113,10 @@ def load_cases(path: Optional[str]) -> List[Case]:
 def load_targets(path: Optional[str]) -> List[Target]:
     if not path:
         # Default to current env configured target
-        url = os.getenv("CENTRAL_LLM_URL", ChatClient.DEFAULT_URL)
-        model = os.getenv("CENTRAL_LLM_MODEL", "centi-nox")
-        return [Target(name="env", url=url, model=model, api_key=(os.getenv("CENTRAL_LLM_API_KEY") or os.getenv("OPENAI_API_KEY"))) ]
+        url = get_env("NOX_LLM_URL") or ChatClient.DEFAULT_URL
+        model = get_env("NOX_LLM_MODEL") or ""
+        api_key = get_env("NOX_LLM_API_KEY") or os.getenv("OPENAI_API_KEY")
+        return [Target(name="env", url=url, model=model, api_key=api_key)]
     raw = json.loads(Path(path).read_text(encoding="utf-8"))
     items: List[Target] = []
     for obj in raw:

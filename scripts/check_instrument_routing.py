@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Self-test harness for Central instrument routing."""
+"""Self-test harness for Nox instrument routing."""
+
+# ruff: noqa: E402
 
 from __future__ import annotations
 

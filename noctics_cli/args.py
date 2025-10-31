@@ -1,10 +1,12 @@
-"""Argument parsing utilities for the Central CLI."""
+"""Argument parsing utilities for the Nox CLI."""
 
 from __future__ import annotations
 
 import argparse
 import os
 from typing import List
+
+from nox_env import get_env
 
 DEFAULT_URL = "http://127.0.0.1:11434/api/chat"
 
@@ -28,13 +30,13 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "-U", "--url",
-        default=os.getenv("CENTRAL_LLM_URL", DEFAULT_URL),
-        help="Endpoint URL (env CENTRAL_LLM_URL)",
+        default=get_env("NOX_LLM_URL"),
+        help="Endpoint URL (env NOX_LLM_URL)",
     )
     parser.add_argument(
         "-M", "--model",
-        default=os.getenv("CENTRAL_LLM_MODEL", "centi-nox"),
-        help="Model name (env CENTRAL_LLM_MODEL)",
+        default=get_env("NOX_LLM_MODEL"),
+        help="Model name (env NOX_LLM_MODEL)",
     )
     parser.add_argument(
         "-S", "--system",
@@ -83,8 +85,8 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     )
     parser.add_argument(
         "-k", "--api-key",
-        default=(os.getenv("CENTRAL_LLM_API_KEY") or os.getenv("OPENAI_API_KEY")),
-        help="Optional API key for Authorization header (env CENTRAL_LLM_API_KEY | OPENAI_API_KEY)",
+        default=(get_env("NOX_LLM_API_KEY") or os.getenv("OPENAI_API_KEY")),
+        help="Optional API key for Authorization header (env NOX_LLM_API_KEY | OPENAI_API_KEY)",
     )
     parser.add_argument(
         "-H",
@@ -92,7 +94,7 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         dest="instrument",
         default=None,
         help=(
-            "Optional instrument name label used when Central requests an external instrument; "
+            "Optional instrument name label used when Nox requests an external instrument; "
             "does not skip API calls."
         ),
     )
@@ -146,8 +148,8 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     parser.add_argument(
         "--user-name",
         dest="user_name",
-        default=os.getenv("CENTRAL_USER_NAME", "You"),
-        help="Name to display for your prompt label (env CENTRAL_USER_NAME)",
+        default=get_env("NOX_USER_NAME") or "You",
+        help="Name to display for your prompt label (env NOX_USER_NAME)",
     )
     parser.add_argument(
         "--dev",
@@ -155,7 +157,7 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         help="Run as the project developer (skip user onboarding and log as developer)",
     )
     default_anon = (
-        os.getenv("CENTRAL_INSTRUMENT_ANON", "1").lower() not in {"0", "false", "off", "no"}
+        (get_env("NOX_INSTRUMENT_ANON") or "1").lower() not in {"0", "false", "off", "no"}
     )
     parser.add_argument(
         "--anon-instrument",
@@ -173,6 +175,11 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
     parser.add_argument(
         "--version",
         action="store_true",
-        help="Print the Central version and exit",
+        help="Print the Nox version and exit",
+    )
+    parser.add_argument(
+        "--setup",
+        action="store_true",
+        help="Run the instrument setup wizard and exit",
     )
     return parser.parse_args(argv)

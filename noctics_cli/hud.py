@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Iterable, List, Mapping, Sequence
+
+from nox_env import get_env
 
 __all__ = ["resolve_logo_lines"]
 
@@ -53,23 +54,23 @@ def resolve_logo_lines(*, style_hint: str | None = None) -> List[str]:
     """Return the ASCII art lines for the HUD banner.
 
     Precedence:
-        1. Environment variable ``CENTRAL_HUD_ASCII`` (``\\n``-separated lines)
-        2. Environment variable ``CENTRAL_HUD_ASCII_FILE`` pointing to a text file
-        3. Named preset selected via ``CENTRAL_HUD_STYLE`` or ``style_hint``
+        1. Environment variable ``NOX_HUD_ASCII`` (``\\n``-separated lines)
+        2. Environment variable ``NOX_HUD_ASCII_FILE`` pointing to a text file
+        3. Named preset selected via ``NOX_HUD_STYLE`` or ``style_hint``
         4. Placeholder banner inviting customization
     """
 
-    inline_override = os.getenv("CENTRAL_HUD_ASCII")
+    inline_override = get_env("NOX_HUD_ASCII")
     if inline_override:
         return _clean_lines(inline_override.split("\\n"))
 
-    file_override = os.getenv("CENTRAL_HUD_ASCII_FILE")
+    file_override = get_env("NOX_HUD_ASCII_FILE")
     if file_override:
         art = _load_art_file(Path(file_override).expanduser())
         if art:
             return art
 
-    style = (os.getenv("CENTRAL_HUD_STYLE") or style_hint or "default").strip().lower()
+    style = (get_env("NOX_HUD_STYLE") or style_hint or "default").strip().lower()
     preset = _LOGO_PRESETS.get(style)
     if not preset and style.endswith("-nox"):
         preset = _LOGO_PRESETS.get(style.split("-")[0])

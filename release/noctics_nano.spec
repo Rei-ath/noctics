@@ -60,11 +60,15 @@ for extra_dir in ("config", "datasets", "third_party", "models", "memory"):
     DATAS.extend(include_directory(extra_dir))
 
 DATAS.extend(MODEL_FILES)
+LICENSE_FILE = ROOT / "THIRD_PARTY_LICENSES.md"
+if LICENSE_FILE.exists():
+    DATAS.append((str(LICENSE_FILE), "licenses/THIRD_PARTY_LICENSES.md"))
 
-env_override = os.environ.get("NOCTICS_ENV_FILE", ROOT / ".env.nano")
-ENV_FILE = Path(env_override).expanduser()
-if ENV_FILE.exists():
-    DATAS.append((str(ENV_FILE), "resources/env/.env"))
+env_override = os.environ.get("NOCTICS_ENV_FILE")
+if env_override:
+    ENV_FILE = Path(env_override).expanduser()
+    if ENV_FILE.exists():
+        DATAS.append((str(ENV_FILE), "resources/env/.env"))
 
 OLLAMA_ROOT = ROOT / "assets" / "ollama"
 RUNTIME_DIR = ROOT / "assets" / "runtime"

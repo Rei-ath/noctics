@@ -17,7 +17,7 @@ if str(ROOT) not in sys.path:
 if str(CORE_ROOT) not in sys.path:
     sys.path.insert(0, str(CORE_ROOT))
 
-from central.core import ChatClient  # type: ignore  # pylint: disable=wrong-import-position
+from central.core import ChatClient  # type: ignore  # pylint: disable=wrong-import-position  # noqa: E402
 
 DEFAULT_ADDR = "127.0.0.1"
 DEFAULT_PORT = 4510

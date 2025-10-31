@@ -1,8 +1,7 @@
-"""Developer-mode utilities for the Central CLI."""
+"""Developer-mode utilities for the Nox CLI."""
 
 from __future__ import annotations
 
-import os
 from getpass import getpass
 from typing import Optional
 
@@ -15,13 +14,15 @@ except ImportError as exc:  # pragma: no cover - dependency missing
         "Install it with `pip install noctics-core` or ensure the central modules are importable."
     ) from exc
 
-DEFAULT_DEV_PASSPHRASE = "jx0"
-CENTRAL_DEV_PASSPHRASE_ENV = "CENTRAL_DEV_PASSPHRASE"
-CENTRAL_DEV_PASSPHRASE_ATTEMPT_ENV = "CENTRAL_DEV_PASSWORD_ATTEMPT"
+from nox_env import get_env
+
+DEFAULT_DEV_PASSPHRASE: Optional[str] = None
+NOX_DEV_PASSPHRASE_ENV = "NOX_DEV_PASSPHRASE"
+NOX_DEV_PASSPHRASE_ATTEMPT_ENV = "NOX_DEV_PASSPHRASE_ATTEMPT"
 
 __all__ = [
-    "CENTRAL_DEV_PASSPHRASE_ENV",
-    "CENTRAL_DEV_PASSPHRASE_ATTEMPT_ENV",
+    "NOX_DEV_PASSPHRASE_ENV",
+    "NOX_DEV_PASSPHRASE_ATTEMPT_ENV",
     "DEFAULT_DEV_PASSPHRASE",
     "resolve_dev_passphrase",
     "validate_dev_passphrase",
@@ -30,7 +31,7 @@ __all__ = [
 
 
 def resolve_dev_passphrase() -> Optional[str]:
-    env_value = os.getenv(CENTRAL_DEV_PASSPHRASE_ENV)
+    env_value = get_env(NOX_DEV_PASSPHRASE_ENV)
     if env_value:
         return env_value
     config_value = get_runtime_config().developer.passphrase
@@ -52,7 +53,7 @@ def require_dev_passphrase(expected: Optional[str], *, interactive: bool) -> boo
         return True
 
     if not interactive:
-        attempt = os.getenv(CENTRAL_DEV_PASSPHRASE_ATTEMPT_ENV)
+        attempt = get_env(NOX_DEV_PASSPHRASE_ATTEMPT_ENV)
         return validate_dev_passphrase(expected, attempt=attempt)
 
     for _ in range(3):

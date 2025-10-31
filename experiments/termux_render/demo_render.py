@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import curses
 import os
-import sys
 import time
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple

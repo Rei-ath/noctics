@@ -3,7 +3,7 @@
 End-to-end orchestration tester with optional GPT‑5 review.
 
 Flow per case:
-  1) Send a user prompt via Central ChatClient.
+  1) Send a user prompt via the Nox ChatClient.
   2) If assistant requests an external instrument, extract the instrument query,
      optionally call an OpenAI instrument (e.g., GPT‑4o) to produce a result,
      and stitch it back via ChatClient.process_instrument_result.
@@ -204,7 +204,7 @@ def _call_openai_http_chat(
 def build_review_prompt(cases: List[CaseResult]) -> List[Dict[str, str]]:
     """Return chat-style messages asking the reviewer model to score the results."""
     rubric = (
-        "You are an exacting evaluator for an assistant called Central. "
+        "You are an exacting evaluator for an assistant called Nox. "
         "For each case, score the final assistant response using this rubric (0-10 integers):\n"
         "- relevance: Answers the user's actual prompt.\n"
         "- accuracy: Factually correct, no hallucinations.\n"
@@ -244,9 +244,9 @@ def build_review_prompt(cases: List[CaseResult]) -> List[Dict[str, str]]:
 
 def parse_args(argv: List[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser("orchestrate_eval")
-    p.add_argument("--target-url", default=os.getenv("CENTRAL_LLM_URL", ChatClient.DEFAULT_URL))
-    p.add_argument("--target-model", default=os.getenv("CENTRAL_LLM_MODEL", "centi-nox"))
-    p.add_argument("--target-api-key", default=(os.getenv("CENTRAL_LLM_API_KEY") or os.getenv("OPENAI_API_KEY")))
+    p.add_argument("--target-url", default=os.getenv("NOX_LLM_URL", ChatClient.DEFAULT_URL))
+    p.add_argument("--target-model", default=os.getenv("NOX_LLM_MODEL", "noxl-cortex"))
+    p.add_argument("--target-api-key", default=(os.getenv("NOX_LLM_API_KEY") or os.getenv("OPENAI_API_KEY")))
     p.add_argument("--instrument-model", default=os.getenv("ORCH_INSTRUMENT_MODEL", "gpt-4o"))
     p.add_argument("--review-model", default=os.getenv("ORCH_REVIEW_MODEL", "gpt-5"))
     p.add_argument("--cases", default=None, help="Path to JSON list of {id,prompt}")
@@ -307,7 +307,7 @@ def main(argv: List[str]) -> int:
         transport=transport,
     )
 
-    api_key = os.getenv("OPENAI_API_KEY") or os.getenv("CENTRAL_LLM_API_KEY") or getattr(client, "api_key", None)
+    api_key = os.getenv("OPENAI_API_KEY") or os.getenv("NOX_LLM_API_KEY") or getattr(client, "api_key", None)
 
     results: List[CaseResult] = []
     for case in cases:

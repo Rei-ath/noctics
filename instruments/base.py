@@ -1,4 +1,4 @@
-"""Base classes and utilities for Central instruments."""
+"""Base classes and utilities for Nox instruments."""
 
 from __future__ import annotations
 

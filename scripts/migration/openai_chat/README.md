@@ -34,7 +34,7 @@ Options worth knowing:
 
 Outputs land under `memory/imported/openai/YYYY-MM-DD/` with JSONL turns plus a `.meta.json`
 that records the original IDs and source (`openai-chat-export`). Trimmed histories write a
-sidecar `<session>.full.jsonl` so Central can pull the rest when needed.
+sidecar `<session>.full.jsonl` so Nox can pull the rest when needed.
 
 ## Next moves
 - Add filters like `--title-contains` or `--since 2024-01-01` when you get picky.

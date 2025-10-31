@@ -1,10 +1,11 @@
-"""Instrument registry for routing Central requests through provider SDKs."""
+"""Instrument registry for routing Nox requests through provider SDKs."""
 
 from __future__ import annotations
 
 import importlib
-import os
 from typing import Iterable, List, Optional, Tuple, Type
+
+from nox_env import get_env
 
 from .base import BaseInstrument
 
@@ -37,7 +38,7 @@ def _import_plugin(module_name: str) -> None:
 
 
 def _load_plugins_from_env() -> None:
-    raw = os.getenv("CENTRAL_INSTRUMENT_PLUGINS", "")
+    raw = get_env("NOX_INSTRUMENT_PLUGINS") or ""
     if not raw:
         return
     for token in raw.split(","):

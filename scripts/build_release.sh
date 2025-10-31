@@ -9,6 +9,7 @@ MODEL_PATH="${MODEL_PATH:-}"
 DEFAULT_MODEL_NAME="centi-nox"
 PREPARE_ASSETS_SCRIPT="$ROOT_DIR/scripts/prepare_assets.sh"
 MODEL_POINTER_FILE="$ROOT_DIR/assets/ollama/models/.active_model"
+FALLBACK_FILE="$ROOT_DIR/assets/runtime/fallback_remote_url.txt"
 
 if [[ -z "$MODEL_PATH" ]]; then
   MODEL_PATH="${1:-}"
@@ -51,6 +52,13 @@ if ! command -v pyinstaller >/dev/null 2>&1; then
 fi
 
 mkdir -p "$DIST_DIR" "$BUILD_DIR"
+rm -rf "$DIST_DIR/noctics-core"
+
+if [[ -n "${NOCTICS_FALLBACK_REMOTE_URL:-}" ]]; then
+  printf '%s\n' "$NOCTICS_FALLBACK_REMOTE_URL" > "$FALLBACK_FILE"
+elif [[ ! -f "$FALLBACK_FILE" ]]; then
+  printf '%s\n' "https://layma.noctics.ai/api/generate" > "$FALLBACK_FILE"
+fi
 
 MODEL_FILENAME="$(basename "$MODEL_PATH")"
 
@@ -59,9 +67,45 @@ NOCTICS_MODEL_PATH="$(cd "$(dirname "$MODEL_PATH")" && pwd)/$MODEL_FILENAME"
 NOCTICS_MODEL_PATH="$NOCTICS_MODEL_PATH" \
 NOCTICS_MODEL_NAME="$MODEL_FILENAME" \
 NOCTICS_ROOT="$ROOT_DIR" \
+NOCTICS_SKIP_EMBEDDED_OLLAMA=1 \
 pyinstaller "$SPEC_FILE" \
   --distpath "$DIST_DIR" \
   --workpath "$BUILD_DIR" \
   --clean
 
 echo "[build_release] Build artifacts available under $DIST_DIR" >&2
+
+if [[ -d "$DIST_DIR/noctics-core" ]]; then
+  "$ROOT_DIR/scripts/post_build_checksums.sh" "$DIST_DIR/noctics-core" "$DIST_DIR/noctics-core.SHA256SUMS" || true
+  install -Dm644 "$ROOT_DIR/THIRD_PARTY_LICENSES.md" "$DIST_DIR/noctics-core/licenses/THIRD_PARTY_LICENSES.md"
+
+  if [[ "${NOCTICS_SKIP_INSTALLER_PACKAGING:-0}" != "1" ]]; then
+    PACKAGER="$ROOT_DIR/scripts/package_installer_artifacts.py"
+    if [[ -f "$PACKAGER" ]]; then
+      MANIFEST_PATH="${NOCTICS_INSTALLER_MANIFEST:-$DIST_DIR/installer_manifest.json}"
+      ARCHIVE_PREFIX="${NOCTICS_INSTALLER_ARCHIVE_PREFIX:-noctics-core}"
+      PACKAGER_ARGS=(--dist-dir "$DIST_DIR/noctics-core" --output-dir "$DIST_DIR" --archive-prefix "$ARCHIVE_PREFIX" --manifest "$MANIFEST_PATH")
+      if [[ -n "${NOCTICS_INSTALLER_URL_PREFIX:-}" ]]; then
+        PACKAGER_ARGS+=(--url-prefix "$NOCTICS_INSTALLER_URL_PREFIX")
+      fi
+      if [[ -n "${NOCTICS_INSTALLER_SLUG:-}" ]]; then
+        PACKAGER_ARGS+=(--slug "$NOCTICS_INSTALLER_SLUG")
+      fi
+      if [[ -n "${NOCTICS_INSTALLER_OS:-}" ]]; then
+        PACKAGER_ARGS+=(--os-name "$NOCTICS_INSTALLER_OS")
+      fi
+      if [[ -n "${NOCTICS_INSTALLER_ARCH:-}" ]]; then
+        PACKAGER_ARGS+=(--arch "$NOCTICS_INSTALLER_ARCH")
+      fi
+      if [[ -n "${NOCTICS_INSTALLER_ARTIFACT_URL:-}" ]]; then
+        PACKAGER_ARGS+=(--artifact-url "$NOCTICS_INSTALLER_ARTIFACT_URL")
+      fi
+      if [[ -n "${NOCTICS_INSTALLER_README_TEMPLATE:-}" ]]; then
+        PACKAGER_ARGS+=(--readme-template "$NOCTICS_INSTALLER_README_TEMPLATE")
+      fi
+      python3 "$PACKAGER" "${PACKAGER_ARGS[@]}"
+    else
+      echo "[build_release] Installer packaging helper missing: $PACKAGER" >&2
+    fi
+  fi
+fi

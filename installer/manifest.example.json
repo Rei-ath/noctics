@@ -1,0 +1,17 @@
+{
+  "linux-x86_64": {
+    "url": "file://REPLACE_ME/dist/noctics-core-linux-x86_64.tar.gz",
+    "sha256": "REPLACE_WITH_SHA256",
+    "size": 123456
+  },
+  "macos-arm64": {
+    "url": "file://REPLACE_ME/dist/noctics-core-macos-arm64.zip",
+    "sha256": "REPLACE_WITH_SHA256",
+    "size": 123456
+  },
+  "windows-x86_64": {
+    "url": "file://REPLACE_ME/dist/noctics-core-windows-x86_64.zip",
+    "sha256": "REPLACE_WITH_SHA256",
+    "size": 123456
+  }
+}

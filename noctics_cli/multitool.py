@@ -87,17 +87,39 @@ def _import_core_dependencies() -> None:
     from interfaces.dotenv import load_local_dotenv
 
 
-try:
-    _import_core_dependencies()
-except ImportError:
+def _bootstrap_core() -> None:
+    try:
+        _import_core_dependencies()
+        return
+    except ImportError:
+        pass
+
     _ensure_local_core_path()
     try:
         _import_core_dependencies()
-    except ImportError as exc:  # pragma: no cover - dependency missing
+        return
+    except ImportError as exc:
+        if os.getenv("NOCTICS_USE_CORE_SOURCE") != "1":
+            os.environ["NOCTICS_USE_CORE_SOURCE"] = "1"
+            _ensure_local_core_path()
+            try:
+                _import_core_dependencies()
+                sys.stderr.write(
+                    "[noctics] Falling back to source core packages because binaries are out of date.\n"
+                )
+                return
+            except ImportError as exc2:  # pragma: no cover - dependency missing
+                raise ImportError(
+                    "Noctics CLI requires the noctics-core package. "
+                    "Install it with `pip install noctics-core` or make sure the central modules are importable."
+                ) from exc2
         raise ImportError(
             "Noctics CLI requires the noctics-core package. "
             "Install it with `pip install noctics-core` or make sure the central modules are importable."
         ) from exc
+
+
+_bootstrap_core()
 from noctics_cli.app import main as chat_main  # noqa: E402
 from noctics_cli.tui import main as tui_main  # noqa: E402
 

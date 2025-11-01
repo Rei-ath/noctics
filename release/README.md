@@ -58,8 +58,8 @@ NOCTICS_SKIP_ASSET_PREP=1 ./scripts/build_release.sh
 ## Housekeeping
 - Intermediate build products live in `.pyi-build/`; delete when space is tight.
 - Override packaging defaults with `NOCTICS_INSTALLER_*` environment variables
-  (slug/arch overrides, CDN prefix, manifest path, README template). See
-  `docs/installer_design.md` for the full list.
+  (slug/arch overrides, CDN prefix, manifest path, README template, version,
+  build id). See `docs/installer_design.md` for the full list.
 - Generate checksums:
 
   ```bash

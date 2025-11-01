@@ -42,6 +42,28 @@ python -m pip install core_pinaries/
 python -c "import central; print(central.__version__)"
 ```
 
+## Install & setup
+**End users (binaries)**
+```bash
+curl -fsSLO https://cdn.noctics.ai/releases/<ver>/bootstrap.py
+python bootstrap.py --manifest https://cdn.noctics.ai/releases/<ver>/installer_manifest.json
+noctics --setup  # paste your API key once
+```
+Ensure the installer’s shim path (Linux/macOS `~/.local/bin`, Windows
+`%LOCALAPPDATA%\Noctics\bin`) is on your `PATH`.
+
+**Developers (repo clone)**
+```bash
+git clone https://github.com/Rei-ath/noctics.git
+cd noctics
+python -m pip install -e core
+python -m pip install -e .
+noctics --setup
+```
+Export `OPENAI_API_KEY=…` (or point `NOCTICS_SECRETS_FILE` at a dotenv) before
+the setup command if you want to skip the wizard prompt. For local-only use, pull
+the fallback model once: `ollama pull centi-nox`.
+
 ## Release checklist
 1. **Sync the submodule** – finish work in `core/`, push, then
    `./scripts/update_core.sh main` from the repo root.
@@ -80,8 +102,8 @@ MODEL_SPECS='qwen3:1.7b=>micro-nox' ./scripts/build_micro.sh
 - Bundled Qwen model weights remain under Apache-2.0; see `THIRD_PARTY_LICENSES.md`
   for attribution and ensure the file ships with every release artifact.
 - `scripts/package_installer_artifacts.py` wraps the archive/manifest step; use
-  `NOCTICS_INSTALLER_URL_PREFIX` and related environment variables to bake CDN
-  links during CI runs.
+  `NOCTICS_INSTALLER_URL_PREFIX`, `NOCTICS_INSTALLER_VERSION`, and
+  `NOCTICS_INSTALLER_BUILD` to bake CDN links and metadata during CI runs.
 
 ## Working on docs & telemetry
 - Docs live under `core/docs/` and `release/README.md` for release rituals.

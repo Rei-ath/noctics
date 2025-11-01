@@ -16,7 +16,7 @@ import sys
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
 from urllib.request import urlopen
 import zipfile
@@ -30,6 +30,12 @@ if str(CORE_ROOT) not in sys.path:
 
 from noctics_cli.paths import bin_dir, install_home  # noqa: E402
 from noctics_cli.setup import ensure_global_config_home  # noqa: E402
+from noctics_cli.metrics import record_install_event  # noqa: E402
+
+try:  # pragma: no cover - optional dependency when core isn't bundled with bootstrapper
+    from interfaces.paths import resolve_memory_root as _core_resolve_memory_root  # type: ignore  # noqa: E402
+except Exception:  # pragma: no cover
+    _core_resolve_memory_root = None  # type: ignore
 
 DEFAULT_MANIFEST_URL = "https://example.com/noctics/installer_manifest.json"
 ARCHIVE_TYPES = {".zip": "zip", ".tar.gz": "tar", ".tgz": "tar", ".tar": "tar"}
@@ -177,7 +183,32 @@ def create_shim(binary: Path) -> Path:
     return shim
 
 
-def run(manifest_ref: str, slug_override: Optional[str] = None, force: bool = False) -> None:
+def _resolve_memory_home() -> Path:
+    if _core_resolve_memory_root is not None:
+        try:
+            return _core_resolve_memory_root()
+        except Exception:
+            pass
+
+    override = os.getenv("NOCTICS_MEMORY_HOME")
+    if override:
+        target = Path(override).expanduser()
+    else:
+        data_root = os.getenv("NOCTICS_DATA_ROOT")
+        if data_root:
+            base = Path(data_root).expanduser()
+        else:
+            xdg_data = os.getenv("XDG_DATA_HOME")
+            if xdg_data:
+                base = Path(xdg_data).expanduser()
+            else:
+                base = Path.home() / ".local" / "share"
+        target = base / "noctics" / "memory"
+    target.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def run(manifest_ref: str, slug_override: Optional[str] = None, force: bool = False) -> Tuple[Path, Path]:
     slug = slug_override or detect_platform_slug()
     manifest = read_manifest(manifest_ref)
     entry = manifest.get(slug)
@@ -189,6 +220,9 @@ def run(manifest_ref: str, slug_override: Optional[str] = None, force: bool = Fa
     if not url:
         raise RuntimeError(f"Manifest entry for '{slug}' missing 'url'")
     sha256 = entry.get("sha256")
+    version = str(entry.get("version") or "unknown")
+    build_label = entry.get("build")
+    build_label = str(build_label) if build_label else None
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp) / Path(urlparse(url).path).name
@@ -206,9 +240,16 @@ def run(manifest_ref: str, slug_override: Optional[str] = None, force: bool = Fa
         shim = create_shim(binary)
 
     ensure_global_config_home()
+    try:
+        memory_root = _resolve_memory_home()
+        record_install_event(memory_root, version=version, slug=slug, build=build_label)
+    except Exception:
+        pass
+
     print(f"Installed Noctics runtime to {install_root_dir}")
     print(f"Launcher shim created at {shim}")
     print("Run 'noctics --setup' to configure instruments if you haven't already.")
+    return install_root_dir, shim
 
 
 def main(argv: Optional[list[str]] = None) -> int:

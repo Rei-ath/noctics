@@ -11,6 +11,31 @@ PREPARE_ASSETS_SCRIPT="$ROOT_DIR/scripts/prepare_assets.sh"
 MODEL_POINTER_FILE="$ROOT_DIR/assets/ollama/models/.active_model"
 FALLBACK_FILE="$ROOT_DIR/assets/runtime/fallback_remote_url.txt"
 
+if [[ -z "${NOCTICS_INSTALLER_VERSION:-}" ]]; then
+  if command -v python3 >/dev/null 2>&1; then
+    NOCTICS_INSTALLER_VERSION="$(PYTHONPATH="$ROOT_DIR:$ROOT_DIR/core" python3 - <<'PY'
+try:
+    from central.version import __version__
+except Exception:
+    __version__ = ""
+print(__version__, end="")
+PY
+)"
+    NOCTICS_INSTALLER_VERSION="${NOCTICS_INSTALLER_VERSION//$'\n'/}"
+  else
+    NOCTICS_INSTALLER_VERSION=""
+  fi
+fi
+
+if [[ -z "${NOCTICS_INSTALLER_BUILD:-}" ]]; then
+  if command -v git >/dev/null 2>&1; then
+    NOCTICS_INSTALLER_BUILD="$(git -C "$ROOT_DIR" rev-parse --short HEAD 2>/dev/null || true)"
+    NOCTICS_INSTALLER_BUILD="${NOCTICS_INSTALLER_BUILD//$'\n'/}"
+  else
+    NOCTICS_INSTALLER_BUILD=""
+  fi
+fi
+
 if [[ -z "$MODEL_PATH" ]]; then
   MODEL_PATH="${1:-}"
 fi
@@ -102,6 +127,12 @@ if [[ -d "$DIST_DIR/noctics-core" ]]; then
       fi
       if [[ -n "${NOCTICS_INSTALLER_README_TEMPLATE:-}" ]]; then
         PACKAGER_ARGS+=(--readme-template "$NOCTICS_INSTALLER_README_TEMPLATE")
+      fi
+      if [[ -n "${NOCTICS_INSTALLER_VERSION:-}" ]]; then
+        PACKAGER_ARGS+=(--version "$NOCTICS_INSTALLER_VERSION")
+      fi
+      if [[ -n "${NOCTICS_INSTALLER_BUILD:-}" ]]; then
+        PACKAGER_ARGS+=(--build "$NOCTICS_INSTALLER_BUILD")
       fi
       python3 "$PACKAGER" "${PACKAGER_ARGS[@]}"
     else

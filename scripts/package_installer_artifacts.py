@@ -22,6 +22,8 @@ README_FILENAME = "README.txt"
 README_TEMPLATE = """Noctics Runtime
 =================
 
+Version: {VERSION}
+
 This archive packages the Noctics core runtime, models, and CLI.
 
 Quick start:
@@ -51,6 +53,8 @@ class PackagingArgs:
     artifact_url: Optional[str]
     skip_readme: bool
     readme_template: Optional[Path]
+    version: Optional[str]
+    build_label: Optional[str]
 
 
 def _detect_os_name() -> str:
@@ -97,7 +101,7 @@ def _compute_slug(os_name: str, arch: str) -> str:
     return f"{os_name}-{arch}"
 
 
-def _ensure_readme(dist_dir: Path, template: Optional[Path]) -> None:
+def _ensure_readme(dist_dir: Path, template: Optional[Path], version: Optional[str]) -> None:
     target = dist_dir / README_FILENAME
     if target.exists():
         return
@@ -105,6 +109,10 @@ def _ensure_readme(dist_dir: Path, template: Optional[Path]) -> None:
         content = template.read_text(encoding="utf-8")
     else:
         content = README_TEMPLATE
+    if version:
+        content = content.replace("{VERSION}", str(version))
+    else:
+        content = content.replace("{VERSION}", "unknown")
     target.write_text(content, encoding="utf-8")
 
 
@@ -143,13 +151,27 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _update_manifest(manifest: Path, slug: str, url: str, sha256: str, size: int) -> None:
+def _update_manifest(
+    manifest: Path,
+    slug: str,
+    url: str,
+    sha256: str,
+    size: int,
+    *,
+    version: Optional[str] = None,
+    build: Optional[str] = None,
+) -> None:
     data: Dict[str, Dict[str, object]] = {}
     if manifest.exists():
         data = json.loads(manifest.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             raise RuntimeError(f"Manifest file {manifest} does not contain an object")
-    data[slug] = {"url": url, "sha256": sha256, "size": size}
+    entry: Dict[str, object] = {"url": url, "sha256": sha256, "size": size}
+    if version:
+        entry["version"] = version
+    if build:
+        entry["build"] = build
+    data[slug] = entry
     manifest.parent.mkdir(parents=True, exist_ok=True)
     manifest.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -177,6 +199,8 @@ def package_runtime(
     artifact_url: Optional[str] = None,
     skip_readme: bool = False,
     readme_template: Optional[Path] = None,
+    version: Optional[str] = None,
+    build: Optional[str] = None,
 ) -> Path:
     if not dist_dir.exists():
         raise RuntimeError(f"Distribution directory missing: {dist_dir}")
@@ -194,7 +218,7 @@ def package_runtime(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if not skip_readme:
-        _ensure_readme(dist_dir, readme_template)
+        _ensure_readme(dist_dir, readme_template, version)
 
     packaging_args = PackagingArgs(
         dist_dir=dist_dir,
@@ -209,6 +233,8 @@ def package_runtime(
         artifact_url=artifact_url,
         skip_readme=skip_readme,
         readme_template=readme_template,
+        version=version,
+        build_label=build,
     )
     archive_path = _create_archive(packaging_args)
     checksum = _sha256(archive_path)
@@ -216,9 +242,18 @@ def package_runtime(
     url = _resolve_url(archive_name, url_prefix, artifact_url)
 
     if manifest:
-        _update_manifest(manifest, computed_slug, url, checksum, archive_path.stat().st_size)
+        _update_manifest(
+            manifest,
+            computed_slug,
+            url,
+            checksum,
+            archive_path.stat().st_size,
+            version=version,
+            build=build,
+        )
 
-    print(f"[package_installer] Created {archive_path} (sha256={checksum})")
+    version_suffix = f", version={version}" if version else ""
+    print(f"[package_installer] Created {archive_path} (sha256={checksum}{version_suffix})")
     if manifest:
         print(f"[package_installer] Updated manifest {manifest} for slug {computed_slug}")
     return archive_path
@@ -290,6 +325,16 @@ def _parse_args() -> argparse.Namespace:
         type=Path,
         help="Optional path to a template for README.txt.",
     )
+    parser.add_argument(
+        "--version",
+        default=None,
+        help="Version string to embed in manifest entries and README placeholders.",
+    )
+    parser.add_argument(
+        "--build",
+        default=None,
+        help="Build identifier recorded alongside the manifest entry.",
+    )
     return parser.parse_args()
 
 
@@ -312,6 +357,8 @@ def main() -> int:
             artifact_url=args.artifact_url,
             skip_readme=args.skip_readme,
             readme_template=args.readme_template,
+            version=args.version,
+            build=args.build,
         )
     except Exception as exc:
         print(f"[package_installer] Packaging failed: {exc}", file=sys.stderr)

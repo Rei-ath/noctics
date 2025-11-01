@@ -18,28 +18,19 @@ experience.
 - `assets/` – cached Ollama runtime and model blobs for release builds.
 - `dist/` – output folder for wheels and PyInstaller bundles.
 
-## Quick start
+## Quick start (binary SDK)
 ```bash
-# 1. install dev dependencies
-python -m pip install -e core
-python -m pip install -e .
+# download the wheels from the latest release, then:
+python -m pip install core_pinaries-<ver>-py3-none-any.whl
+python -m pip install noctics-<ver>-py3-none-any.whl
 
-# 2. provide secrets (see docs/configuration.md for production setups)
-# export NOCTICS_SECRETS_FILE=/path/to/secrets.env
+# optional: seed secrets before launching
+# export OPENAI_API_KEY=...
 
-# 3. run the chat client
+# run Noctics
 noctics --help
-python main.py --stream        # streamed chat session
-noctics tui                    # curses dashboard for saved sessions
-# optional: run once to configure instrument API keys globally
-noctics --setup
-```
-
-Prefer binaries? Install the compiled payload:
-
-```bash
-python -m pip install core_pinaries/
-python -c "import central; print(central.__version__)"
+noctics --setup        # configure instruments once (writes to ~/.config/noctics)
+noctics tui            # optional: curses dashboard
 ```
 
 ## Install & setup
@@ -52,12 +43,10 @@ noctics --setup  # paste your API key once
 Ensure the installer’s shim path (Linux/macOS `~/.local/bin`, Windows
 `%LOCALAPPDATA%\Noctics\bin`) is on your `PATH`.
 
-**Developers (repo clone)**
+**Developers (binary SDK)**
 ```bash
-git clone https://github.com/Rei-ath/noctics.git
-cd noctics
-python -m pip install -e core
-python -m pip install -e .
+python -m pip install core_pinaries-<ver>-py3-none-any.whl
+python -m pip install noctics-<ver>-py3-none-any.whl
 noctics --setup
 ```
 Export `OPENAI_API_KEY=…` (or point `NOCTICS_SECRETS_FILE` at a dotenv) before

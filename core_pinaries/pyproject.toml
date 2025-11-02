@@ -16,7 +16,7 @@ classifiers = [
 readme = "README.md"
 
 [tool.setuptools]
-packages = ["core_pinaries"]
+packages = ["core_pinaries", "core_pinaries.noxl"]
 include-package-data = true
 
 [tool.setuptools.package-data]

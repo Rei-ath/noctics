@@ -17,7 +17,7 @@ from typing import Iterable
 
 
 _ROOT = pathlib.Path(__file__).resolve().parent
-_MODULE_NAMES: tuple[str, ...] = ("central", "config", "inference", "interfaces", "noxl")
+_MODULE_NAMES: tuple[str, ...] = ("central", "config", "inference", "interfaces")
 
 
 def _resolve_extension_path(name: str) -> pathlib.Path:

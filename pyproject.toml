@@ -15,7 +15,7 @@ classifiers = [
   "Operating System :: OS Independent",
 ]
 dependencies = [
-  "noctics-core>=0.1.39",
+  "noctics-core-pinaries>=0.1.39",
 ]
 
 [project.optional-dependencies]
@@ -26,6 +26,7 @@ noctics = "noctics_cli.multitool:main"
 
 [tool.setuptools]
 include-package-data = true
+py-modules = ["nox_env"]
 
 [tool.setuptools.packages.find]
 include = [

@@ -9,15 +9,13 @@ from nox_env import get_env
 
 __all__ = ["resolve_logo_lines"]
 
-# Default HUD art matches the historic CLI banner.
+# Default HUD art matches the official Nox banner.
+# Default HUD art matches the official Nox banner.
 _DEFAULT_LOGO: Sequence[str] = (
-    " _   _   ___    __  __  ",
-    "| \\ | | / _ \\  \\ \\/ /  ",
-    "|  \\| || | | |  >  <   ",
-    "| |\\  || |_| | / /\\ \\  ",
-    "|_| \\_| \\___/ /_/  \\_\\ ",
+    "╔╗╔┌─┐─┐┬",
+    "║║║││┌┴┬┘",
+    "╝╚╝└─┘┴└─",
 )
-
 # Placeholder art keeps dimensions reasonable while inviting customization.
 _PLACEHOLDER_LOGO: Sequence[str] = (
     "┌────────────────────────────┐",

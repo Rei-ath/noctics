@@ -1,0 +1,99 @@
+name: Build & Publish Wheels
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  build-wheels:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      PYTHON_VERSION: "3.13"
+    steps:
+      - name: Configure SSH for private submodules
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SUBMODULE_SSH_KEY }}
+
+      - name: Check out repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install build dependencies
+        run: |
+          python -m pip install --upgrade pip build nuitka
+
+      - name: Compile core binaries with Nuitka
+        run: |
+          set -euo pipefail
+          BUILD_DIR=build/core_pinaries
+          rm -rf core_pinaries_build
+          DIST_DIR=core_pinaries_build/core_pinaries
+          mkdir -p "${BUILD_DIR}" "${DIST_DIR}" dist
+
+          EXT_SUFFIX=$(python - <<'PY'
+import sysconfig
+print(sysconfig.get_config_var("EXT_SUFFIX"))
+PY
+          )
+
+          compile_pkg () {
+            local name="$1"
+            python -m nuitka \
+              --module "core/${name}" \
+              --include-package="${name}" \
+              --include-package-data="${name}" \
+              --output-dir="${BUILD_DIR}"
+            local artifact
+            artifact=$(find "${BUILD_DIR}" -maxdepth 1 -type f -name "${name}*${EXT_SUFFIX}" | head -n1)
+            mv "${artifact}" "${DIST_DIR}/"
+          }
+
+          for pkg in central config inference interfaces noxl; do
+            compile_pkg "${pkg}"
+          done
+
+          cp core_pinaries/__init__.py core_pinaries/noctics_core.pth "${DIST_DIR}/"
+          cp core_pinaries/*.py "${DIST_DIR}/" || true
+          cp core_pinaries/README.md core_pinaries/pyproject.toml core_pinaries_build/
+
+      - name: Build core binaries wheel
+        run: |
+          python -m build --wheel core_pinaries_build
+          mv core_pinaries_build/dist/noctics_core_pinaries-*.whl dist/
+
+      - name: Build Noctics wheel
+        run: |
+          python -m build --wheel .
+          ls dist/*.whl
+
+      - name: Generate requirements file
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          CORE_WHEEL=$(ls dist/noctics_core_pinaries-*.whl | sed 's#.*/##')
+          CLI_WHEEL=$(ls dist/noctics-*.whl | sed 's#.*/##')
+          cat <<EOF > dist/requirements-noctics.txt
+          https://github.com/${{ github.repository }}/releases/download/${TAG}/${CORE_WHEEL}
+          https://github.com/${{ github.repository }}/releases/download/${TAG}/${CLI_WHEEL}
+          EOF
+
+      - name: Upload assets to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/noctics_core_pinaries-*.whl
+            dist/noctics-*.whl
+            dist/requirements-noctics.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

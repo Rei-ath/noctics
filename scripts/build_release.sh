@@ -7,6 +7,7 @@ DIST_DIR="$ROOT_DIR/dist"
 BUILD_DIR="$ROOT_DIR/.pyi-build"
 MODEL_PATH="${MODEL_PATH:-}"
 DEFAULT_MODEL_NAME="centi-nox"
+TARGET_MODEL_NAME="${MODEL_NAME_OVERRIDE:-$DEFAULT_MODEL_NAME}"
 PREPARE_ASSETS_SCRIPT="$ROOT_DIR/scripts/prepare_assets.sh"
 MODEL_POINTER_FILE="$ROOT_DIR/assets/ollama/models/.active_model"
 FALLBACK_FILE="$ROOT_DIR/assets/runtime/fallback_remote_url.txt"
@@ -41,7 +42,6 @@ if [[ -z "$MODEL_PATH" ]]; then
 fi
 
 if [[ -z "$MODEL_PATH" ]]; then
-  TARGET_MODEL_NAME="${MODEL_NAME_OVERRIDE:-$DEFAULT_MODEL_NAME}"
   if [[ "${NOCTICS_SKIP_ASSET_PREP:-0}" != "1" ]]; then
     if [[ -f "$MODEL_POINTER_FILE" && -d "$ROOT_DIR/assets/ollama/models/blobs" ]]; then
       echo "[build_release] Reusing existing model assets under assets/ollama/models" >&2
@@ -101,6 +101,10 @@ pyinstaller "$SPEC_FILE" \
 echo "[build_release] Build artifacts available under $DIST_DIR" >&2
 
 if [[ -d "$DIST_DIR/noctics-core" ]]; then
+  ALIAS_FILE="$DIST_DIR/noctics-core/_internal/resources/runtime/primary_alias.txt"
+  if [[ -f "$ALIAS_FILE" ]]; then
+    printf '%s\n' "$TARGET_MODEL_NAME" > "$ALIAS_FILE"
+  fi
   "$ROOT_DIR/scripts/post_build_checksums.sh" "$DIST_DIR/noctics-core" "$DIST_DIR/noctics-core.SHA256SUMS" || true
   install -Dm644 "$ROOT_DIR/THIRD_PARTY_LICENSES.md" "$DIST_DIR/noctics-core/licenses/THIRD_PARTY_LICENSES.md"
 

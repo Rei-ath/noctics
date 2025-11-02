@@ -7,6 +7,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from types import ModuleType
+import sys
 
 import pytest
 
@@ -21,6 +22,7 @@ def _load_packager_module() -> ModuleType:
     if spec is None or spec.loader is None:
         raise RuntimeError("Unable to load package_installer_artifacts module for tests")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -52,15 +54,18 @@ def test_package_runtime_updates_manifest(tmp_path: Path) -> None:
         url_prefix="https://cdn.test/releases",
         version="0.1.39",
         build="build-123",
+        variant="nano",
     )
 
     assert archive.exists()
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     entry = manifest["linux-x86_64"]
-    assert entry["version"] == "0.1.39"
-    assert entry["build"] == "build-123"
-    assert entry["url"].endswith(archive.name)
-    assert entry["size"] == archive.stat().st_size
+    assert entry["default"] == "nano"
+    variant_entry = entry["variants"]["nano"]
+    assert variant_entry["version"] == "0.1.39"
+    assert variant_entry["build"] == "build-123"
+    assert variant_entry["url"].endswith(archive.name)
+    assert variant_entry["size"] == archive.stat().st_size
 
     readme = dist_dir / "README.txt"
     assert readme.exists()
@@ -81,9 +86,10 @@ def test_bootstrap_installs_and_records_telemetry(tmp_path: Path, monkeypatch: p
         manifest=manifest_path,
         version="0.1.40",
         build="ci-999",
+        variant="nano",
     )
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["linux-x86_64"]["url"] = archive.as_uri()
+    manifest["linux-x86_64"]["variants"]["nano"]["url"] = archive.as_uri()
     manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
 
     install_home = tmp_path / "install"

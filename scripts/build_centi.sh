@@ -8,6 +8,7 @@ BUILD_DIR="$ROOT_DIR/.pyi-build"
 MODEL_POINTER_FILE="$ROOT_DIR/assets/ollama/models/.active_model"
 MODEL_PATH="${MODEL_PATH:-}"
 DEFAULT_MODEL_NAME="centi-nox"
+TARGET_MODEL_NAME="${MODEL_NAME_OVERRIDE:-$DEFAULT_MODEL_NAME}"
 FALLBACK_FILE="$ROOT_DIR/assets/runtime/fallback_remote_url.txt"
 
 if [[ -z "$MODEL_PATH" ]]; then
@@ -15,7 +16,6 @@ if [[ -z "$MODEL_PATH" ]]; then
 fi
 
 if [[ -z "$MODEL_PATH" ]]; then
-  TARGET_MODEL_NAME="${MODEL_NAME_OVERRIDE:-$DEFAULT_MODEL_NAME}"
   if [[ "${NOCTICS_SKIP_ASSET_PREP:-0}" != "1" ]]; then
     if [[ -f "$MODEL_POINTER_FILE" && -d "$ROOT_DIR/assets/ollama/models/blobs" ]]; then
       echo "[build_centi] Reusing existing model assets under assets/ollama/models" >&2
@@ -76,6 +76,10 @@ pyinstaller "$SPEC_FILE" \
 echo "[build_centi] Centi build available under $DIST_DIR/centi-noctics" >&2
 
 if [[ -d "$DIST_DIR/centi-noctics" ]]; then
+  ALIAS_FILE="$DIST_DIR/centi-noctics/_internal/resources/runtime/primary_alias.txt"
+  if [[ -f "$ALIAS_FILE" ]]; then
+    printf '%s\n' "$TARGET_MODEL_NAME" > "$ALIAS_FILE"
+  fi
   "$ROOT_DIR/scripts/post_build_checksums.sh" "$DIST_DIR/centi-noctics" "$DIST_DIR/centi-noctics.SHA256SUMS" || true
   install -Dm644 "$ROOT_DIR/THIRD_PARTY_LICENSES.md" "$DIST_DIR/centi-noctics/licenses/THIRD_PARTY_LICENSES.md"
 fi

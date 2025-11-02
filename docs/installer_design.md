@@ -20,12 +20,15 @@
 
 ## Quick start (binary install)
 ```bash
-curl -fsSLO https://cdn.noctics.ai/releases/<ver>/bootstrap.py
-python bootstrap.py --manifest https://cdn.noctics.ai/releases/<ver>/installer_manifest.json
+curl -fsSL https://raw.githubusercontent.com/noctics/noctics/main/installer/noctics | bash
 noctics --setup
 ```
 
-Add the printed shim directory to `PATH`, then either complete the wizard or set
+The helper pulls `bootstrap.py` directly from GitHub, downloads the manifest
+(`https://github.com/noctics/noctics/releases/latest/download/installer_manifest.json`),
+detects the host GPU VRAM, and selects the most appropriate bundle (defaults to
+`nano` on machines without a discrete GPU). Add the printed shim directory to
+`PATH`, then either complete the wizard or set
 `OPENAI_API_KEY`/`NOCTICS_SECRETS_FILE` ahead of time to skip it.
 
 ## Artifact Layout
@@ -86,24 +89,38 @@ Add the printed shim directory to `PATH`, then either complete the wizard or set
    refresh the manifest.
 2. Collect the generated files under `dist/`:
    - `noctics-core-<slug>.tar.gz` or `.zip` depending on the platform.
-   - `installer_manifest.json` with per-slug metadata that now includes
-     `url`, `sha256`, archive `size` in bytes, the bundle `version`, and an
-     optional `build` identifier (commit hash or CI build number).
+   - `installer_manifest.json` with per-slug metadata. Entries may contain a
+     `variants` object (e.g. `nano`, `micro`, `centi`) so the bootstrapper can
+     select the right bundle after VRAM detection. Each variant records
+     `url`, `sha256`, archive `size`, the bundle `version`, and an optional
+     `build` identifier (commit hash or CI build number).
    - `noctics-core.SHA256SUMS` for in-archive checksums (existing step).
 3. Upload the archive(s) and manifest to release storage (GitHub Releases, S3,
    or your CDN). Set `NOCTICS_INSTALLER_URL_PREFIX` when rebuilding to pre-bake
    CDN URLs into the manifest.
 4. Bootstrapper downloads this manifest to locate the correct asset:
    ```json
-   {
-     "linux-x86_64": {
-       "url": "https://cdn/noctics-core-linux-x86_64.tar.gz",
-       "sha256": "…",
-       "size": 123456789,
-       "version": "0.1.39",
-       "build": "abc1234"
-     }
-   }
+{
+  "linux-x86_64": {
+    "default": "nano",
+    "variants": {
+      "nano": {
+        "url": "https://github.com/noctics/noctics/releases/download/v0.1.39/noctics-core-nano-linux-x86_64.tar.gz",
+        "sha256": "…",
+        "size": 123456789,
+        "version": "0.1.39",
+        "build": "abc1234"
+      },
+      "micro": {
+        "url": "https://github.com/noctics/noctics/releases/download/v0.1.39/noctics-core-micro-linux-x86_64.tar.gz",
+        "sha256": "…",
+        "size": 234567890,
+        "version": "0.1.39",
+        "build": "abc1234"
+      }
+    }
+  }
+}
    ```
 
 ### Packaging knobs
@@ -133,8 +150,9 @@ Manual packaging remains available:
 ```bash
 python scripts/package_installer_artifacts.py \
   --dist-dir dist/noctics-core \
-  --url-prefix https://cdn.noctics.ai/releases/0.1.39 \
-  --version 0.1.39
+  --url-prefix https://github.com/noctics/noctics/releases/download/v0.1.39 \
+  --version 0.1.39 \
+  --variant nano
 ```
 
 ## Validation workflow

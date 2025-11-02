@@ -55,6 +55,7 @@ class PackagingArgs:
     readme_template: Optional[Path]
     version: Optional[str]
     build_label: Optional[str]
+    variant: Optional[str]
 
 
 def _detect_os_name() -> str:
@@ -160,6 +161,7 @@ def _update_manifest(
     *,
     version: Optional[str] = None,
     build: Optional[str] = None,
+    variant: Optional[str] = None,
 ) -> None:
     data: Dict[str, Dict[str, object]] = {}
     if manifest.exists():
@@ -171,7 +173,19 @@ def _update_manifest(
         entry["version"] = version
     if build:
         entry["build"] = build
-    data[slug] = entry
+    if variant:
+        slug_entry = data.get(slug)
+        if not isinstance(slug_entry, dict):
+            slug_entry = {}
+        variants = slug_entry.get("variants")
+        if not isinstance(variants, dict):
+            variants = {}
+        variants[variant] = entry
+        slug_entry["variants"] = variants
+        slug_entry.setdefault("default", variant)
+        data[slug] = slug_entry
+    else:
+        data[slug] = entry
     manifest.parent.mkdir(parents=True, exist_ok=True)
     manifest.write_text(json.dumps(data, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -201,6 +215,7 @@ def package_runtime(
     readme_template: Optional[Path] = None,
     version: Optional[str] = None,
     build: Optional[str] = None,
+    variant: Optional[str] = None,
 ) -> Path:
     if not dist_dir.exists():
         raise RuntimeError(f"Distribution directory missing: {dist_dir}")
@@ -235,6 +250,7 @@ def package_runtime(
         readme_template=readme_template,
         version=version,
         build_label=build,
+        variant=variant,
     )
     archive_path = _create_archive(packaging_args)
     checksum = _sha256(archive_path)
@@ -250,6 +266,7 @@ def package_runtime(
             archive_path.stat().st_size,
             version=version,
             build=build,
+            variant=variant,
         )
 
     version_suffix = f", version={version}" if version else ""
@@ -335,6 +352,11 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Build identifier recorded alongside the manifest entry.",
     )
+    parser.add_argument(
+        "--variant",
+        default=None,
+        help="Variant label recorded under the manifest slug (e.g. nano, micro).",
+    )
     return parser.parse_args()
 
 
@@ -359,6 +381,7 @@ def main() -> int:
             readme_template=args.readme_template,
             version=args.version,
             build=args.build,
+            variant=args.variant,
         )
     except Exception as exc:
         print(f"[package_installer] Packaging failed: {exc}", file=sys.stderr)

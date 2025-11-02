@@ -11,7 +11,9 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -37,7 +39,8 @@ try:  # pragma: no cover - optional dependency when core isn't bundled with boot
 except Exception:  # pragma: no cover
     _core_resolve_memory_root = None  # type: ignore
 
-DEFAULT_MANIFEST_URL = "https://example.com/noctics/installer_manifest.json"
+DEFAULT_MANIFEST_URL = "https://github.com/noctics/noctics/releases/latest/download/installer_manifest.json"
+VARIANT_ORDER = ["nano", "micro", "centi", "release"]
 ARCHIVE_TYPES = {".zip": "zip", ".tar.gz": "tar", ".tgz": "tar", ".tar": "tar"}
 
 
@@ -138,14 +141,18 @@ def find_binary(root: Path) -> Path:
     candidates = [
         root / "noctics-core",
         root / "noctics-core.exe",
+        root / "centi-noctics",
+        root / "micro-noctics",
+        root / "nano-noctics",
     ]
     for candidate in candidates:
         if candidate.exists():
             return candidate
-    for path in root.rglob("noctics-core"):
-        if path.is_file():
-            return path
-    for path in root.rglob("noctics-core.exe"):
+    for suffix in ("noctics-core", "noctics-core.exe", "centi-noctics", "micro-noctics", "nano-noctics"):
+        for path in root.rglob(suffix):
+            if path.is_file():
+                return path
+    for path in root.rglob("*-noctics"):
         if path.is_file():
             return path
     raise RuntimeError("Unable to locate noctics-core binary in archive")
@@ -208,13 +215,192 @@ def _resolve_memory_home() -> Path:
     return target
 
 
-def run(manifest_ref: str, slug_override: Optional[str] = None, force: bool = False) -> Tuple[Path, Path]:
-    slug = slug_override or detect_platform_slug()
-    manifest = read_manifest(manifest_ref)
-    entry = manifest.get(slug)
-    if not entry:
+def _detect_vram_with_nvidia_smi() -> Optional[float]:
+    command = [
+        "nvidia-smi",
+        "--query-gpu=memory.total",
+        "--format=csv,noheader,nounits",
+    ]
+    try:
+        output = subprocess.check_output(
+            command,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=3,
+        )
+    except Exception:
+        return None
+    values = []
+    for line in output.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            values.append(float(line))
+        except ValueError:
+            continue
+    if not values:
+        return None
+    # nvidia-smi returns MiB when nounits is enabled
+    max_mb = max(values)
+    return max_mb / 1024.0
+
+
+def _detect_vram_with_system_profiler() -> Optional[float]:
+    if sys.platform != "darwin":
+        return None
+    try:
+        output = subprocess.check_output(
+            ["system_profiler", "SPDisplaysDataType"],
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=5,
+        )
+    except Exception:
+        return None
+    matches = re.findall(r"VRAM.*?:\s*([\d.,]+)\s*(GB|MB)", output, flags=re.IGNORECASE)
+    if not matches:
+        return None
+    best = 0.0
+    for value, unit in matches:
+        try:
+            numeric = float(value.replace(",", ""))
+        except ValueError:
+            continue
+        unit = unit.upper()
+        if unit == "MB":
+            numeric = numeric / 1024.0
+        best = max(best, numeric)
+    return best or None
+
+
+def _detect_vram_from_env() -> Optional[float]:
+    override = os.getenv("NOCTICS_INSTALLER_VRAM_GB") or os.getenv("NOCTICS_VRAM_GB")
+    if not override:
+        return None
+    try:
+        return float(override)
+    except ValueError:
+        return None
+
+
+def detect_gpu_vram_gib() -> Optional[float]:
+    """Best-effort detection of total GPU VRAM in GiB."""
+
+    for detector in (
+        _detect_vram_from_env,
+        _detect_vram_with_nvidia_smi,
+        _detect_vram_with_system_profiler,
+    ):
+        value = detector()
+        if value and value > 0:
+            return value
+    return None
+
+
+def _recommend_variant(
+    available: Dict[str, Dict[str, Any]],
+    *,
+    vram_gib: Optional[float],
+    default: Optional[str],
+) -> str:
+    # Fallback order ensures nano is always valid when present.
+    ordered_variants = [name for name in VARIANT_ORDER if name in available]
+    if not ordered_variants:
+        ordered_variants = sorted(available.keys())
+
+    thresholds = {
+        "nano": 0.0,
+        "micro": 8.0,
+        "centi": 16.0,
+        "release": 24.0,
+    }
+
+    if vram_gib is None:
+        if default in available:
+            return default  # prefer manifest-provided default when detection fails
+        return ordered_variants[0]
+
+    # Find the most capable variant that does not exceed detected VRAM.
+    candidate = None
+    for name in ordered_variants:
+        required = thresholds.get(name, thresholds.get("nano", 0.0))
+        if vram_gib >= required:
+            candidate = name
+        else:
+            break
+    if candidate:
+        return candidate
+    if default in available:
+        return default
+    return ordered_variants[0]
+
+
+def _resolve_manifest_entry(
+    manifest: Dict[str, Any],
+    slug: str,
+    *,
+    variant_override: Optional[str],
+) -> Tuple[Dict[str, Any], Optional[str], Optional[float]]:
+    raw_entry = manifest.get(slug)
+    if raw_entry is None:
         available = ", ".join(sorted(manifest.keys()))
         raise RuntimeError(f"No artifact for '{slug}'. Available: {available}")
+
+    if isinstance(raw_entry, dict) and "variants" in raw_entry:
+        variants_obj = raw_entry.get("variants")
+        if not isinstance(variants_obj, dict):
+            raise RuntimeError(f"Manifest entry for '{slug}' has invalid variants data")
+        available_variants = {
+            key: value for key, value in variants_obj.items() if isinstance(value, dict)
+        }
+        if not available_variants:
+            raise RuntimeError(f"Manifest entry for '{slug}' defines no valid variants")
+
+        if variant_override:
+            if variant_override not in available_variants:
+                options = ", ".join(sorted(available_variants))
+                raise RuntimeError(
+                    f"Variant '{variant_override}' not available for '{slug}'. Options: {options}"
+                )
+            chosen = variant_override
+            vram = detect_gpu_vram_gib()
+            return available_variants[chosen], chosen, vram
+
+        vram = detect_gpu_vram_gib()
+        default_variant = raw_entry.get("default") if isinstance(raw_entry, dict) else None
+        if default_variant and not isinstance(default_variant, str):
+            default_variant = None
+        chosen = _recommend_variant(
+            available_variants,
+            vram_gib=vram,
+            default=default_variant,
+        )
+        return available_variants[chosen], chosen, vram
+
+    if variant_override:
+        raise RuntimeError(
+            f"Manifest for '{slug}' has no variants; --variant '{variant_override}' is invalid."
+        )
+    if not isinstance(raw_entry, dict):
+        raise RuntimeError(f"Manifest entry for '{slug}' has unexpected format")
+    return raw_entry, None, None
+
+
+def run(
+    manifest_ref: str,
+    slug_override: Optional[str] = None,
+    *,
+    variant_override: Optional[str] = None,
+    force: bool = False,
+) -> Tuple[Path, Path]:
+    slug = slug_override or detect_platform_slug()
+    manifest = read_manifest(manifest_ref)
+    entry, chosen_variant, detected_vram = _resolve_manifest_entry(
+        manifest,
+        slug,
+        variant_override=variant_override,
+    )
 
     url = entry.get("url")
     if not url:
@@ -224,6 +410,13 @@ def run(manifest_ref: str, slug_override: Optional[str] = None, force: bool = Fa
     build_label = entry.get("build")
     build_label = str(build_label) if build_label else None
 
+    if chosen_variant:
+        if detected_vram:
+            print(
+                f"Detected ~{detected_vram:.1f} GiB of VRAM; installing '{chosen_variant}' variant."
+            )
+        else:
+            print(f"Unable to detect VRAM; defaulting to '{chosen_variant}' variant.")
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp) / Path(urlparse(url).path).name
         download_file(url, tmp_path)
@@ -265,13 +458,23 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="Override detected platform slug (e.g. linux-x86_64)",
     )
     parser.add_argument(
+        "--variant",
+        default=os.getenv("NOCTICS_INSTALLER_VARIANT"),
+        help="Override variant selection when the manifest provides multiple options.",
+    )
+    parser.add_argument(
         "--force",
         action="store_true",
         help="Remove existing installation before installing",
     )
     args = parser.parse_args(argv)
     try:
-        run(args.manifest, slug_override=args.slug, force=args.force)
+        run(
+            args.manifest,
+            slug_override=args.slug,
+            variant_override=args.variant,
+            force=args.force,
+        )
     except Exception as exc:
         print(f"Installer failed: {exc}", file=sys.stderr)
         return 1

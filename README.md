@@ -36,12 +36,14 @@ noctics tui            # optional: curses dashboard
 ## Install & setup
 **End users (binaries)**
 ```bash
-curl -fsSLO https://cdn.noctics.ai/releases/<ver>/bootstrap.py
-python bootstrap.py --manifest https://cdn.noctics.ai/releases/<ver>/installer_manifest.json
+curl -fsSL https://raw.githubusercontent.com/noctics/noctics/main/installer/noctics | bash
 noctics --setup  # paste your API key once
 ```
-Ensure the installer’s shim path (Linux/macOS `~/.local/bin`, Windows
-`%LOCALAPPDATA%\Noctics\bin`) is on your `PATH`.
+The bootstrapper downloads from the latest GitHub release, checks your GPU VRAM,
+selects the recommended bundle (defaults to the `nano` build on low-memory
+machines), and installs `noctics` into `~/.local/bin` (Windows:
+`%LOCALAPPDATA%\Noctics\bin`). Override the choice with
+`curl ... | bash -s -- --variant micro` or set `NOCTICS_INSTALLER_VARIANT`.
 
 **Developers (binary SDK)**
 ```bash
@@ -52,6 +54,9 @@ noctics --setup
 Export `OPENAI_API_KEY=…` (or point `NOCTICS_SECRETS_FILE` at a dotenv) before
 the setup command if you want to skip the wizard prompt. For local-only use, pull
 the fallback model once: `ollama pull centi-nox`.
+
+> Step-by-step install logs (including known issues) live in
+> `docs/install_walkthrough.md`.
 
 ## Release checklist
 1. **Sync the submodule** – finish work in `core/`, push, then
@@ -95,7 +100,7 @@ MODEL_SPECS='qwen3:1.7b=>micro-nox' ./scripts/build_micro.sh
   `NOCTICS_INSTALLER_BUILD` to bake CDN links and metadata during CI runs.
 
 ## Working on docs & telemetry
-- Docs live under `core/docs/` and `release/README.md` for release rituals.
+- Docs live under `docs/` (see `docs/users/` and `docs/dev/`) plus `core/docs/` for deep dives and `release/README.md` for release rituals.
 - Session history lands in `~/.local/share/noctics/memory`.
 - Persona overrides live in `config/persona.overrides.json` (or environment).
 

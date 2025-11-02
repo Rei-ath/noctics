@@ -33,7 +33,7 @@ if not MODEL_PATH.exists():
 
 MODEL_NAME = os.environ.get("NOCTICS_MODEL_NAME", MODEL_PATH.name)
 MODEL_FILES = [
-    (str(MODEL_PATH), f"resources/models/{MODEL_NAME}"),
+    (str(MODEL_PATH), "resources/models"),
 ]
 
 

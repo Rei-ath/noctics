@@ -181,7 +181,7 @@ def _start_embedded_ollama(
     env = os.environ.copy()
     env.setdefault("OLLAMA_MODELS", str(models_dir))
     env.setdefault("OLLAMA_HOME", str(root / "ollama"))
-    env.setdefault("OLLAMA_HOST", host)
+    env.setdefault("OLLAMA_HOST", f"http://{host}")
 
     process = subprocess.Popen(
         [str(ollama_bin), "serve"],

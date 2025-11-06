@@ -11,13 +11,14 @@ from typing import List, Optional, Sequence
 
 
 def _ensure_local_core_path() -> None:
-    """Ensure the compiled core packages are importable, with opt-in source overrides for developers."""
+    """Ensure the core packages are importable, preferring source trees when present."""
 
     repo_root = Path(__file__).resolve().parents[1]
     source_root = repo_root / "core"
     binary_root = repo_root / "core_pinaries"
 
-    use_source_override = os.getenv("NOCTICS_USE_CORE_SOURCE") == "1"
+    use_source_override = os.getenv("NOCTICS_USE_CORE_SOURCE")
+    prefer_binary_override = os.getenv("NOCTICS_USE_CORE_BINARIES") == "1"
     has_source = source_root.is_dir()
     has_binary = binary_root.is_dir()
 
@@ -34,11 +35,27 @@ def _ensure_local_core_path() -> None:
             if root_posix in resolved:
                 sys.modules.pop(name, None)
 
-    if has_binary and not use_source_override:
+    prefer_source = True
+    if prefer_binary_override:
+        prefer_source = False
+    if use_source_override == "0":
+        prefer_source = False
+    elif use_source_override == "1":
+        prefer_source = True
+
+    if has_source and prefer_source:
+        source_path = str(source_root)
+        if source_path not in sys.path:
+            sys.path.insert(0, source_path)
+        if has_binary:
+            _purge_modules(binary_root)
+        return
+
+    if has_binary:
         binary_path = str(binary_root)
         if binary_path not in sys.path:
             sys.path.insert(0, binary_path)
-        if has_source:
+        if has_source and not prefer_source:
             _purge_modules(source_root)
         try:
             import core_pinaries
@@ -52,18 +69,6 @@ def _ensure_local_core_path() -> None:
         source_path = str(source_root)
         if source_path not in sys.path:
             sys.path.insert(0, source_path)
-        if has_binary:
-            _purge_modules(binary_root)
-    elif has_binary:
-        binary_path = str(binary_root)
-        if binary_path not in sys.path:
-            sys.path.insert(0, binary_path)
-        try:
-            import core_pinaries
-
-            core_pinaries.ensure_modules()
-        except Exception:
-            pass
 
 
 def _import_core_dependencies() -> None:

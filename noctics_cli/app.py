@@ -10,12 +10,16 @@ No external dependencies (stdlib only).
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import textwrap
+import threading
+import time
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -89,7 +93,7 @@ from .dev import (
     require_dev_passphrase,
     resolve_dev_passphrase,
 )
-from .hud import resolve_logo_lines
+from .hud import build_hud_content
 
 RuntimeIdentity = _RuntimeIdentity
 resolve_runtime_identity = _resolve_runtime_identity
@@ -110,6 +114,136 @@ THINK_OPEN_L = THINK_OPEN.lower()
 THINK_CLOSE_L = THINK_CLOSE.lower()
 THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 
+
+def _preferred_bubble_width() -> int:
+    columns = shutil.get_terminal_size(fallback=(90, 24)).columns
+    return max(32, min(columns - 6, 96))
+
+
+class ChatBubble:
+    """Utility for rendering conversational bubbles with consistent styling."""
+
+    def __init__(
+        self,
+        title: str,
+        *,
+        accent: str,
+        body_color: str = "white",
+        width: Optional[int] = None,
+    ) -> None:
+        self.title = (title or "").strip() or "Assistant"
+        self.accent = accent
+        self.body_color = body_color
+        computed_width = _preferred_bubble_width() if width is None else width
+        self.width = max(16, computed_width)
+        self.body_width = max(8, self.width - 2)
+
+    def _wrap_lines(self, text: Optional[str]) -> List[str]:
+        if not text:
+            return [""]
+        normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+        lines: List[str] = []
+        for fragment in normalized.split("\n"):
+            if fragment == "":
+                lines.append("")
+                continue
+            wrapped = textwrap.wrap(
+                fragment,
+                width=self.body_width,
+                replace_whitespace=False,
+                drop_whitespace=False,
+            )
+            lines.extend(wrapped or [""])
+        if not lines:
+            lines.append("")
+        return lines
+
+    def render(self, text: Optional[str]) -> None:
+        border = "─" * self.width
+        print(color(f"╭{border}╮", fg=self.accent, bold=True))
+        title_text = f" {self.title} "
+        if len(title_text) > self.width:
+            title_text = title_text[: self.width]
+        centered = title_text.center(self.width)
+        print(
+            color("│", fg=self.accent, bold=True)
+            + color(centered, fg=self.body_color, bold=True)
+            + color("│", fg=self.accent, bold=True)
+        )
+        print(color(f"├{border}┤", fg=self.accent))
+        for line in self._wrap_lines(text):
+            padded = line.ljust(self.body_width)
+            print(
+                color("│", fg=self.accent)
+                + color(padded, fg=self.body_color)
+                + color("│", fg=self.accent)
+            )
+        print(color(f"╰{border}╯", fg=self.accent))
+
+
+class Spinner:
+    """Terminal spinner that animates while waiting for model responses."""
+
+    FRAMES = ("⠋", "⠙", "⠚", "⠞", "⠖", "⠦", "⠴", "⠲", "⠳", "⠓")
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        interval: float = 0.1,
+        enabled: bool = True,
+        fg: str = "yellow",
+    ) -> None:
+        self.message = message.strip()
+        self.interval = interval
+        self.enabled = enabled
+        self.fg = fg
+        self._stop = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+        self._line_width = 0
+        self._lock = threading.Lock()
+
+    @property
+    def is_running(self) -> bool:
+        return self._thread is not None and self._thread.is_alive()
+
+    def start(self) -> None:
+        if not self.enabled or self.is_running:
+            return
+        self._stop.clear()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        if not self.enabled:
+            return
+        if not self.is_running:
+            self._clear_line()
+            return
+        self._stop.set()
+        assert self._thread is not None
+        self._thread.join(timeout=0.3)
+        self._thread = None
+        self._clear_line()
+
+    def _run(self) -> None:
+        frames = itertools.cycle(self.FRAMES)
+        while not self._stop.is_set():
+            frame = next(frames)
+            display = f"{self.message} {frame}" if self.message else frame
+            with self._lock:
+                self._line_width = max(self._line_width, len(display))
+            print("\r" + color(display, fg=self.fg, bold=True), end="", flush=True)
+            time.sleep(self.interval)
+        self._clear_line()
+
+    def _clear_line(self) -> None:
+        if not self.enabled:
+            return
+        with self._lock:
+            width = self._line_width
+        if width:
+            print("\r" + " " * width + "\r", end="", flush=True)
 
 def _read_first_prompt(candidates: Iterable[Path]) -> Optional[str]:
     """Return the first non-empty prompt from the provided candidate paths."""
@@ -474,17 +608,23 @@ def _print_session_page(
 
     return page_items
 
-def _make_stream_printer(show_think: bool):
+def _make_stream_printer(show_think: bool, spinner: Optional[Spinner] = None):
     state = {
         "raw": "",
         "clean": "",
         "thinking": False,
         "indicator_shown": False,
+        "spinner_flushed": False,
     }
 
     def emit(piece: str) -> None:
         if not piece:
             return
+
+        if spinner and spinner.is_running and not state["spinner_flushed"]:
+            spinner.stop()
+            print()
+            state["spinner_flushed"] = True
 
         state["raw"] += piece
         lower_raw = state["raw"].lower()
@@ -503,6 +643,10 @@ def _make_stream_printer(show_think: bool):
             state["clean"] = cleaned
 
     def finish() -> None:
+        if spinner and spinner.is_running and not state["spinner_flushed"]:
+            spinner.stop()
+            print()
+            state["spinner_flushed"] = True
         cleaned = clean_public_reply(state["raw"]) or ""
         if cleaned.startswith(state["clean"]):
             delta = cleaned[len(state["clean"]):]
@@ -1104,53 +1248,39 @@ def main(argv: List[str]) -> int:
         term_columns = shutil.get_terminal_size(fallback=(80, 24)).columns
         session_info = cmd_list_sessions()
         session_count = len(session_info)
-        header = persona.central_name
-        logo_lines = resolve_logo_lines(style_hint=persona.variant_name)
-        automation = automation_display
         roster_text = roster_display or "coming soon"
-        info_fields = [
-            ("Version", __version__),
-            ("Operator", operator_name),
-            ("Hardware", hardware_brief),
-            ("Runtime", runtime_meta["runtime"]),
-            ("Runtime Source", runtime_meta["source"]),
-            ("Endpoint", runtime_meta["endpoint"]),
-            ("Model", runtime_meta["model"]),
-            ("Model Target", persona.model_target),
-            ("Persona", persona.central_name),
-            ("Scale", persona.scale_label),
-            ("Variant", persona.variant_name),
-            ("Tagline", persona.tagline),
-            ("Instrument Auto", automation),
-            ("Instrument Roster", roster_text),
-            ("Sessions Saved", str(session_count)),
-        ]
 
-        developer_line: Optional[str] = None
+        developer_display = ""
         if getattr(args, "dev", False):
             dev_identity = resolve_developer_identity()
-            developer_line = f"Developer      : {dev_identity.display_name}"
+            developer_display = dev_identity.display_name
 
-        footer_text = f"{persona.central_name.upper()} · {persona.variant_display}"
+        context = {
+            "header": persona.central_name,
+            "version": __version__,
+            "operator": operator_name,
+            "hardware": hardware_brief,
+            "runtime": runtime_meta["runtime"],
+            "runtime_source": runtime_meta["source"],
+            "endpoint": runtime_meta["endpoint"],
+            "model": runtime_meta["model"],
+            "model_target": persona.model_target,
+            "persona_central_name": persona.central_name,
+            "persona_central_name_upper": persona.central_name.upper(),
+            "persona_scale": persona.scale_label,
+            "persona_variant_name": persona.variant_name,
+            "persona_variant_display": persona.variant_display,
+            "persona_tagline": persona.tagline,
+            "tagline": persona.tagline,
+            "instrument_auto": automation_display,
+            "instrument_roster": roster_text,
+            "sessions_saved": str(session_count),
+            "developer_display": developer_display,
+            "footer": f"{persona.central_name.upper()} · {persona.variant_display}",
+            "logo_style_hint": persona.variant_name,
+        }
 
-        content_specs: List[Dict[str, Any]] = []
-        content_specs.append({"text": header, "align": "center", "bold": True})
-        if developer_line:
-            content_specs.append({"text": developer_line, "align": "left", "bold": False})
-        content_specs.append({"separator": True})
-        for art_line in logo_lines:
-            content_specs.append({"text": art_line, "align": "center", "bold": True})
-        content_specs.append({"separator": True})
-        for label, value in info_fields:
-            content_specs.append(
-                {
-                    "text": f"{label:<16}: {value}",
-                    "align": "left",
-                    "bold": False,
-                }
-            )
-        content_specs.append({"separator": True})
-        content_specs.append({"text": footer_text, "align": "center", "bold": True})
+        content_specs = build_hud_content(context, style_hint=persona.variant_name)
 
         plain_lines = [
             spec["text"]
@@ -1492,26 +1622,35 @@ def main(argv: List[str]) -> int:
             message += " Instrument automation is unavailable, so instruments cannot be reached right now. Nox must respond with a local fallback."
         print(color(message, fg="yellow"))
 
-    def one_turn(user_text: str) -> Optional[str]:
+    def one_turn(
+        user_text: str,
+        *,
+        assistant_bubble: Optional[ChatBubble] = None,
+        spinner_label: Optional[str] = None,
+    ) -> Optional[str]:
         nonlocal client, current_candidate_index
         show_think = bool(args.show_think)
+        spinner_message = spinner_label or f"{persona.central_name} is thinking…"
 
         while True:
-            if show_think:
-                print(color("[processing…]", fg="yellow", bold=True), flush=True)
-
-            if args.stream:
-                stream_emit, stream_finish = _make_stream_printer(show_think)
-            else:
-                stream_emit = None
-                stream_finish = None
+            spinner: Optional[Spinner] = None
+            stream_emit = None
+            stream_finish = None
 
             try:
                 if args.stream:
+                    spinner = Spinner(spinner_message, enabled=interactive, fg="#ff9ff6")
+                    spinner.start()
+                    stream_emit, stream_finish = _make_stream_printer(show_think, spinner=spinner)
                     assistant = client.one_turn(user_text, on_delta=stream_emit)
                 else:
+                    if interactive:
+                        spinner = Spinner(spinner_message, enabled=True, fg="#ff9ff6")
+                        spinner.start()
                     assistant = client.one_turn(user_text)
             except Exception as exc:
+                if spinner:
+                    spinner.stop()
                 if args.stream and stream_finish:
                     stream_finish()
                     print()
@@ -1542,6 +1681,8 @@ def main(argv: List[str]) -> int:
                 print(color("Retrying request with fallback runtime…", fg="yellow"), file=target_stream)
                 continue
 
+            if spinner:
+                spinner.stop()
             if args.stream:
                 if stream_finish:
                     stream_finish()
@@ -1566,7 +1707,14 @@ def main(argv: List[str]) -> int:
                     else:
                         had_think = False
                     if display_text:
-                        print(display_text)
+                        print()
+                        bubble = assistant_bubble or ChatBubble(
+                            persona.central_name,
+                            accent="#ff9ff6",
+                            body_color="#fff5ff",
+                            width=_preferred_bubble_width(),
+                        )
+                        bubble.render(display_text)
             return assistant
 
     # Non-interactive one-shot if stdin is piped and no --user provided
@@ -1820,9 +1968,27 @@ def main(argv: List[str]) -> int:
 
             instrument_suffix = f" [{args.instrument}]" if args.instrument else ""
             prompt_text = prepare_first_prompt_text(prompt, allow_interactive=True)
-            prompt_label = f"{persona.central_name}{instrument_suffix}:"
-            print("\n" + color(prompt_label, fg="#ffefff", bold=True) + " ", end="", flush=True)
-            one_turn(prompt_text)
+            bubble_width = _preferred_bubble_width()
+            user_bubble = ChatBubble(
+                args.user_name,
+                accent="#6be9ff",
+                body_color="#e6fbff",
+                width=bubble_width,
+            )
+            assistant_label = f"{persona.central_name}{instrument_suffix}".strip()
+            assistant_bubble = ChatBubble(
+                assistant_label or persona.central_name,
+                accent="#ff9ff6",
+                body_color="#fff5ff",
+                width=bubble_width,
+            )
+            print()
+            user_bubble.render(prompt_text)
+            one_turn(
+                prompt_text,
+                assistant_bubble=assistant_bubble,
+                spinner_label=f"{assistant_label or persona.central_name} is thinking…",
+            )
     except KeyboardInterrupt:
         print("\n" + color("Interrupted.", fg="yellow"))
     finally:

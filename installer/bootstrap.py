@@ -130,7 +130,10 @@ def extract_archive(archive: Path, dest: Path) -> Path:
             zf.extractall(temp_dir)
     else:
         with tarfile.open(archive, "r:*") as tf:
-            tf.extractall(temp_dir)
+            try:
+                tf.extractall(temp_dir, filter="data")
+            except TypeError:  # pragma: no cover - Python < 3.12
+                tf.extractall(temp_dir)
 
     contents = list(temp_dir.iterdir())
     root = contents[0] if len(contents) == 1 and contents[0].is_dir() else temp_dir

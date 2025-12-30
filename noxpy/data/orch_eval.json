@@ -1,0 +1,42 @@
+{
+  "target": {
+    "url": "http://127.0.0.1:11434/api/generate",
+    "model": "noxllm-05b:latest"
+  },
+  "instrument": {
+    "model": "gpt-4o"
+  },
+  "cases": [
+    {
+      "id": "summarize",
+      "prompt": "Summarize: The quick brown fox jumps over the lazy dog.",
+      "assistant_initial": "A concise summary: Summarize: The quick brown fox jumps over the lazy dog.",
+      "wants_instrument": false,
+      "instrument_query": null,
+      "instrument_model": null,
+      "instrument_result": null,
+      "assistant_final": "A concise summary: Summarize: The quick brown fox jumps over the lazy dog."
+    },
+    {
+      "id": "reasoning",
+      "prompt": "Think step-by-step to solve: 12 + 35 - 7 * 2.",
+      "assistant_initial": "33",
+      "wants_instrument": false,
+      "instrument_query": null,
+      "instrument_model": null,
+      "instrument_result": null,
+      "assistant_final": "33"
+    },
+    {
+      "id": "instrument_suggest",
+      "prompt": "If you cannot answer locally with confidence, emit an [INSTRUMENT QUERY] asking an external model to summarize the key differences between GPT-4o and Qwen2.5 in terms of API styles and streaming support.",
+      "assistant_initial": "Requires an instrument to proceed; paste an instrument response to continue.",
+      "wants_instrument": true,
+      "instrument_query": "Summarize the key differences between GPT-4o and Qwen2.5 in API styles and streaming support.",
+      "instrument_model": "gpt-4o",
+      "instrument_result": "(simulated-instrument-result)",
+      "assistant_final": "Integrated instrument result."
+    }
+  ],
+  "review": "{\"cases\": [{\"id\": \"summarize\", \"scores\": {\"relevance\": 7, \"accuracy\": 7, \"completeness\": 7, \"formatting\": 8, \"privacy\": 9, \"instrument_use\": 8}, \"comments\": \"simulated review\"}, {\"id\": \"reasoning\", \"scores\": {\"relevance\": 7, \"accuracy\": 7, \"completeness\": 7, \"formatting\": 8, \"privacy\": 9, \"instrument_use\": 8}, \"comments\": \"simulated review\"}, {\"id\": \"instrument_suggest\", \"scores\": {\"relevance\": 7, \"accuracy\": 7, \"completeness\": 7, \"formatting\": 8, \"privacy\": 9, \"instrument_use\": 7}, \"comments\": \"simulated review\"}], \"overall\": 7}"
+}

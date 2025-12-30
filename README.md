@@ -1,24 +1,24 @@
-# Noctics (private stack)
+# Noctics (process stack pivot)
 
-Noctics packages the Nox orchestration brain, a multitool CLI, and a
-closed-weight runtime in one place. The public repo lives inside `./core/`; this
-wrapper adds binary builds, release scripts, and a friendlier developer
-experience.
+We are freezing the Python implementation as a legacy artifact (`./noxpy/`) and
+building a process-first stack: Rust for orchestration, Zig for inference, and
+plain stdin/stdout streaming instead of HTTP. The smallest model (`assets/models/nox.gguf`)
+is the only model kept in this tree.
 
-**Current version:** `0.1.39` (derived from the commit count on `main`).
+**Current legacy version:** `0.1.39` (Python, now locked under `noxpy/`).
 
-## What’s inside
-- `core/` – the upstream `noctics-core` source (submodule). All production logic
-  lives here.
-- `core_pinaries/` – Nuitka extensions plus a `.pth` shim for binary-only
-  installs.
-- `noctics_cli/` – multitool entrypoint, session router, and TUI.
-- `scripts/` – build automation (`build_release.sh`, `push_core_pinaries.sh`,
-  model staging helpers, etc.).
-- `assets/` – cached Ollama runtime and model blobs for release builds.
-- `dist/` – output folder for wheels and PyInstaller bundles.
+## Repo layout (human readable)
+- `noxpy/` — legacy Python runtime + CLI; still runnable via `cd noxpy && python main.py`
+- `experiments/noxrs/` — Rust stdin/stdout runner prototype (no HTTP)
+- `experiments/engine/` — Rust orchestrator/FFI scaffold (process-based, no HTTP)
+- `experiments/zig-infer/` — Zig runner scaffold for direct GGUF inference
+- `bin/` — global binaries (e.g., `noxlocal` Go runner build target)
+- `assets/models/` — only the `nox.gguf` weight plus manifests
+- `noxpy/vendor/ollama/` — vendored Ollama source used by the transitional Go runner
+- `docs/` — user/developer docs; add new Rust/Zig notes here as they harden
+- `scripts/` — build/test helpers (Python legacy + new build shims)
 
-## Quick start (binary SDK)
+## Legacy Python quick start (noxpy)
 ```bash
 # download the wheels from the latest release, then:
 python -m pip install core_pinaries-<ver>-py3-none-any.whl
@@ -27,23 +27,31 @@ python -m pip install noctics-<ver>-py3-none-any.whl
 # optional: seed secrets before launching
 # export OPENAI_API_KEY=...
 
-# run Noctics
-noctics --help
-noctics --setup        # configure instruments once (writes to ~/.config/noctics)
-noctics tui            # optional: curses dashboard
+# run Noctics (legacy stack)
+cd noxpy
+python main.py --help
+python main.py --setup  # configure instruments once (writes to ~/.config/noctics)
+python main.py tui      # optional: curses dashboard
 ```
 
-## Install & setup
+## Install & setup (legacy Python)
+
+## Rust stdin/stdout runner (noxrs)
+```bash
+cd experiments/noxrs
+cargo run -- "hello from stdin/stdout runner"
+# or echo "hi" | cargo run
+```
+This runner avoids HTTP entirely and streams tokens immediately. Replace its
+synthetic token loop with real Zig-backed inference next.
 **End users (binaries)**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/noctics/noctics/main/installer/noctics | bash
 noctics --setup  # paste your API key once
 ```
 The bootstrapper downloads from the latest GitHub release, checks your GPU VRAM,
-selects the recommended bundle (defaults to the `nano` build on low-memory
-machines), and installs `noctics` into `~/.local/bin` (Windows:
-`%LOCALAPPDATA%\Noctics\bin`). Override the choice with
-`curl ... | bash -s -- --variant micro` or set `NOCTICS_INSTALLER_VARIANT`.
+selects the recommended bundle, and installs `noctics` into `~/.local/bin`
+(Windows: `%LOCALAPPDATA%\Noctics\bin`).
 
 **Developers (binary SDK)**
 ```bash
@@ -53,10 +61,40 @@ noctics --setup
 ```
 Export `OPENAI_API_KEY=…` (or point `NOCTICS_SECRETS_FILE` at a dotenv) before
 the setup command if you want to skip the wizard prompt. For local-only use, pull
-the fallback model once: `ollama pull centi-nox`.
+the tiny model once: `ollama create nox -f assets/runtime/nox.modelfile`.
 
 > Step-by-step install logs (including known issues) live in
 > `docs/install_walkthrough.md`.
+
+## Local runtime tuning
+Noctics now ships a single, tiny `nox` alias (Qwen 2.5 0.5B) and auto-starts the
+bundled Ollama server by default whenever you point at
+`http://127.0.0.1:11434/api/generate` (set `NOCTICS_AUTO_START_OLLAMA=0` to keep
+the runtime manual). Interactive CLI sessions default to streaming results so
+you see tokens as soon as they arrive.
+
+Tune the inference payloads with these environment knobs:
+
+- `NOX_NUM_THREADS` / `NOX_NUM_THREAD` — force the Ollama `num_thread` option.
+  When unset Noctics detects the CPU count and caps it with
+  `NOX_NUM_THREADS_CAP` (default 6 on Android/Termux builds).
+- `NOX_NUM_CTX` plus the legacy `NOX_CONTEXT_LENGTH`, `NOX_CONTEXT_LEN`, or
+  `OLLAMA_CONTEXT_LENGTH` identifiers — control the context window size per
+  request.
+- `NOX_NUM_BATCH` — set `num_batch` for request-time parallelism.
+- `NOX_KEEP_ALIVE`, `NOX_OLLAMA_KEEP_ALIVE`, or `OLLAMA_KEEP_ALIVE` — keep the
+  `nox` model alive between turns so Ollama does not tear down the runner.
+
+Interactive sessions now stream plain `rei:` and `nox:` lines instead of drawing
+ASCII bubbles or spinner lines, which keeps token output aligned and avoids the
+`***` wrappers that some terminals add around the boxed art.
+
+When Noctics auto-starts the Ollama server it seeds `OLLAMA_KEEP_ALIVE=24h`,
+`OLLAMA_CONTEXT_LENGTH=1024`, `OLLAMA_NUM_PARALLEL=1`, and
+`OLLAMA_MAX_LOADED_MODELS=1` so the bundled runtime is fast to spin up. If you
+ever need to inspect what Ollama is doing, set `NOCTICS_DEBUG_OLLAMA=1`.
+Additional runtime tuning guidance lives in
+`docs/configuration.md#runtime-tuning`.
 
 ## Release checklist
 1. **Sync the submodule** – finish work in `core/`, push, then
@@ -77,8 +115,7 @@ the fallback model once: `ollama pull centi-nox`.
 
 ### Example: single-model bundles
 ```bash
-MODEL_SPECS='qwen3:4b=>milli-nox' ./scripts/build_centi.sh
-MODEL_SPECS='qwen3:1.7b=>micro-nox' ./scripts/build_micro.sh
+MODEL_SPECS='qwen2.5:0.5b=>nox' ./scripts/build_release.sh
 ```
 
 ## Packaging notes
@@ -87,7 +124,7 @@ MODEL_SPECS='qwen3:1.7b=>micro-nox' ./scripts/build_micro.sh
   (`release/runtime_env.py`) auto-starts the embedded Ollama binary only when no
   external runtime is configured. Export `NOX_LLM_URL` (e.g.
   `https://api.openai.com/v1/chat/completions`) to skip the embedded server; the
-  CLI maps scale aliases to real OpenAI ids via `NOX_OPENAI_MODEL`
+  CLI maps the `nox` alias to a real OpenAI id via `NOX_OPENAI_MODEL`
   (default: `gpt-4o-mini`).
 - Binary-only installs rely on `core/__init__.py` to fall back to the compiled
   extensions when the source tree is missing.

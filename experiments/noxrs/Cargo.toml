@@ -1,0 +1,9 @@
+[package]
+name = "nox"
+version = "0.0.1"
+edition = "2021"
+description = "Process-first Nox runner (stdin/stdout, no HTTP)"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]

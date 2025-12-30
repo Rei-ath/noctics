@@ -1,0 +1,6 @@
+# Directories generated at runtime or local environments that should be excluded from cloc stats
+memory/
+memory/early-archives/
+memory/sessions/
+jenv/
+__pycache__/

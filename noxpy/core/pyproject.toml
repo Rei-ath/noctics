@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "noctics-core"
+version = "0.1.39"
+description = "Local-first chat orchestrator powering the Nox CLI"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{name = "Rei"}]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Operating System :: OS Independent",
+]
+dependencies = []
+
+[project.scripts]
+noctics-central = "central.cli:main"
+noxl = "noxl.cli:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = [
+  "central*",
+  "interfaces*",
+  "noxl*",
+]
+exclude = [
+  "tests*",
+  "scripts*",
+  "datasets*",
+  "jenv*",
+]

@@ -1,0 +1,16 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.noctics.sims3d'
+    compileSdk 34
+    
+    defaultConfig {
+        applicationId "com.noctics.sims3d"
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+}

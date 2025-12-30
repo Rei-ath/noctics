@@ -1,0 +1,42 @@
+{
+  "target": {
+    "url": "https://api.openai.com/v1/chat/completions",
+    "model": "gpt-4o"
+  },
+  "instrument": {
+    "model": "gpt-4o"
+  },
+  "cases": [
+    {
+      "id": "summarize",
+      "prompt": "Summarize: The quick brown fox jumps over the lazy dog.",
+      "assistant_initial": "A nimble fox leaps over a resting dog.",
+      "wants_instrument": false,
+      "instrument_query": null,
+      "instrument_model": null,
+      "instrument_result": null,
+      "assistant_final": "A nimble fox leaps over a resting dog."
+    },
+    {
+      "id": "reasoning",
+      "prompt": "Think step-by-step to solve: 12 + 35 - 7 * 2.",
+      "assistant_initial": "To solve the expression \\(12 + 35 - 7 \\times 2\\), follow the order of operations, often remembered by the acronym PEMDAS (Parentheses, Exponents, Multiplication and Division (from left to right), Addition and Subtraction (from left to right)).\n\n1. **Identify operations**: The operations present are addition, subtraction, and multiplication.\n   \n2. **Perform multiplication first**:\n   - Calculate \\(7 \\times 2 = 14\\).\n\n3. **Substitute the result back into the expression**:\n   - The expression becomes \\(12 + 35 - 14\\).\n\n4. **Perform addition and subtraction from left to right**:\n   - First, do the addition: \\(12 + 35 = 47\\).\n   - Then, do the subtraction: \\(47 - 14 = 33\\).\n\nTherefore, the result of the expression \\(12 + 35 - 7 \\times 2\\) is \\(33\\).",
+      "wants_instrument": false,
+      "instrument_query": null,
+      "instrument_model": null,
+      "instrument_result": null,
+      "assistant_final": "To solve the expression \\(12 + 35 - 7 \\times 2\\), follow the order of operations, often remembered by the acronym PEMDAS (Parentheses, Exponents, Multiplication and Division (from left to right), Addition and Subtraction (from left to right)).\n\n1. **Identify operations**: The operations present are addition, subtraction, and multiplication.\n   \n2. **Perform multiplication first**:\n   - Calculate \\(7 \\times 2 = 14\\).\n\n3. **Substitute the result back into the expression**:\n   - The expression becomes \\(12 + 35 - 14\\).\n\n4. **Perform addition and subtraction from left to right**:\n   - First, do the addition: \\(12 + 35 = 47\\).\n   - Then, do the subtraction: \\(47 - 14 = 33\\).\n\nTherefore, the result of the expression \\(12 + 35 - 7 \\times 2\\) is \\(33\\)."
+    },
+    {
+      "id": "instrument_suggest",
+      "prompt": "If you cannot answer locally with confidence, emit an [INSTRUMENT QUERY] asking an external model to summarize the key differences between GPT-4o and Qwen2.5 in terms of API styles and streaming support.",
+      "assistant_initial": "[INSTRUMENT QUERY] Please provide a summary of the key differences between GPT-4o and Qwen2.5, specifically focusing on their API styles and streaming support.",
+      "wants_instrument": true,
+      "instrument_query": "Please provide a summary of the key differences between GPT-4o and Qwen2.5, specifically focusing on their API styles and streaming support.",
+      "instrument_model": "gpt-4o",
+      "instrument_result": "As of the latest information available, here are the key differences between GPT-4o and Qwen2.5 concerning their API styles and streaming support:\n\n**GPT-4o:**\n- **API Style:** GPT-4o typically follows a more structured and standardized API style that is consistent with the broader ecosystem of OpenAI's APIs. This makes it straightforward for developers who are already familiar with OpenAI's suite to integrate and utilize its capabilities.\n- **Streaming Support:** GPT-4o includes robust support for streaming outputs. This allows developers to receive token-by-token streaming, which is beneficial for applications that require real-time or progressive generation of text, such as chatbots or live document editing.\n\n**Qwen2.5:**\n- **API Style:** Qwen2.5 might have a more domain-specific or proprietary API style, possibly with features tailored to specific use cases that differ from the more generic ones offered by OpenAI models like GPT-4o. This can be advantageous for specialized applications but may require additional learning or customization.\n- **Streaming Support:** The streaming capabilities in Qwen2.5 may vary depending on its intended use case and architecture. It might offer streaming in a way that aligns more closely with its design philosophy or targeted applications, which might differ from the more generalized streaming provided by GPT-4o.\n\nThese differences highlight the varied approaches taken by different AI models to cater to specific needs and integration preferences. Always refer to the respective API documentation for the most detailed and up-to-date information on integration and streaming options.",
+      "assistant_final": "**Explanation:** \n\nThe key differences between GPT-4o and Qwen2.5 regarding API styles and streaming support are as follows:\n\n1. **API Style:**\n   - **GPT-4o:** Uses a structured and standardized API style consistent with OpenAI's ecosystem, making it easy for developers familiar with other OpenAI APIs to integrate.\n   - **Qwen2.5:** May have a more domain-specific or proprietary API style, tailored to specific use cases, which might require custom integration efforts.\n\n2. **Streaming Support:**\n   - **GPT-4o:** Offers robust support for token-by-token streaming, facilitating real-time or progressive text generation needed by applications like chatbots and live editing tools.\n   - **Qwen2.5:** Its streaming support might align with its proprietary design philosophy, potentially differing in availability or implementation from GPT-4o based on specific application needs.\n\nThese differences show how AI models tailor their integration and feature sets to specific developer needs and application goals."
+    }
+  ],
+  "review": "{\n  \"cases\": [\n    {\n      \"id\": \"summarize\",\n      \"scores\": {\n        \"relevance\": 10,\n        \"accuracy\": 10,\n        \"completeness\": 10,\n        \"formatting\": 10,\n        \"privacy\": 10,\n        \"instrument_use\": 10\n      },\n      \"comments\": \"Accurate, concise paraphrase capturing the core meaning; clear formatting; no privacy issues; no instrument needed.\"\n    },\n    {\n      \"id\": \"reasoning\",\n      \"scores\": {\n        \"relevance\": 10,\n        \"accuracy\": 10,\n        \"completeness\": 10,\n        \"formatting\": 10,\n        \"privacy\": 10,\n        \"instrument_use\": 10\n      },\n      \"comments\": \"Follows correct order of operations with a clear, step-by-step explanation; correct result; formatting is clean; no privacy concerns; no instrument needed.\"\n    },\n    {\n      \"id\": \"instrument_suggest\",\n      \"scores\": {\n        \"relevance\": 10,\n        \"accuracy\": 6,\n        \"completeness\": 6,\n        \"formatting\": 10,\n        \"privacy\": 10,\n        \"instrument_use\": 10\n      },\n      \"comments\": \"Used the instrument as requested and presented a clear summary. However, the content is vague/speculative (e.g., 'may have', 'might') and lacks concrete, verifiable differences about API styles and streaming, which reduces accuracy and completeness.\"\n    }\n  ],\n  \"overall\": 9.56\n}"
+}

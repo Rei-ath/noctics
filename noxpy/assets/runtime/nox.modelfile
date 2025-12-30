@@ -1,0 +1,8 @@
+FROM ../models/nox.gguf
+
+TEMPLATE """{{- if .System }}{{ .System }}
+
+{{- end }}{{ .Prompt }}"""
+
+PARAMETER temperature 0.6
+PARAMETER repeat_penalty 1.05

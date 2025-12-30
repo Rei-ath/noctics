@@ -1,8 +1,0 @@
-FROM ../models/qwen2.5-0.5b-instruct-q4_k_m.gguf
-
-TEMPLATE """{{- if .System }}{{ .System }}
-
-{{- end }}{{ .Prompt }}"""
-
-PARAMETER temperature 0.6
-PARAMETER repeat_penalty 1.05

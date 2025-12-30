@@ -1,26 +1,70 @@
- # Byte-compiled / optimized / DLL files
+# Python bytecode / cache
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.pyre/
+__pypackages__/
 
-# Virtual environment
+# Virtual environments
 .venv/
 jenv/
 .env
-.env.centi
-.env.micro
-.env.nano
+.python-version
 
 # Distribution / packaging
 build/
 dist/
 *.egg-info/
 *.whl
+pip-wheel-metadata/
 
 # PyInstaller
 *.spec
-!release/noctics_nano.spec
+!release/noctics_release.spec
 .pyi-build/
+
+# Rust / Cargo
+**/target/
+
+# Zig
+**/.zig-cache/
+**/zig-cache/
+**/zig-out/
+
+# C / C++ build artifacts
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+
+# Android / Gradle
+android/**/build/
+android/**/.gradle/
+android/**/.cxx/
+android/**/.externalNativeBuild/
+android/**/local.properties
+android/**/captures/
+android/**/cmake-build-*/
+*.apk
+*.aab
+*.apks
+*.keystore
+*.jks
+
+# Node / npm
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # Editor and IDE files
 .vscode/
@@ -42,6 +86,8 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.bak
+temp/
+noxpy/temp/
 
 # Downloaded artifacts
 .ollama-download/
@@ -53,9 +99,17 @@ memory/imported/
 memory/sessions/
 memory/users/
 assets/models/
+nox/obb/
+noxpy/assets/models/
+data/neuroutine/
+data/prompts.txt
 
 # Build outputs
-experiments/*/target/
+noxtarget/
+bin/*
+!bin/.gitkeep
+
+# Localrunner build artifacts
+noxpy/localrunner/noxlocal*
 
 # Miscellaneous
-*.pyc

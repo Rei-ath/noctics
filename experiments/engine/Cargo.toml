@@ -1,0 +1,9 @@
+[package]
+name = "nox-engine"
+version = "0.0.0-dev"
+edition = "2021"
+description = "Process-based orchestrator for Nox (Rust)"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]

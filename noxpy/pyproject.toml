@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "noctics"
+version = "0.1.39"
+description = "Multitool CLI and release harness for the Noctics core orchestrator"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{name = "Rei"}]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Operating System :: OS Independent",
+]
+dependencies = [
+  "noctics-core-pinaries>=0.1.39",
+]
+
+[project.optional-dependencies]
+instrument-openai = ["openai>=1.0"]
+
+[project.scripts]
+noctics = "noctics_cli.multitool:main"
+
+[tool.setuptools]
+include-package-data = true
+py-modules = ["nox_env"]
+
+[tool.setuptools.packages.find]
+include = [
+  "noctics_cli*",
+  "instruments*",
+]

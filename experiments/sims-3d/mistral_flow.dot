@@ -1,0 +1,118 @@
+digraph InferenceStep {
+    rankdir=LR;
+    node [shape=box, style=filled, fillcolor=lightblue, fontname="Helvetica"];
+    edge [fontname="Helvetica", fontsize=10];
+
+    // Hardware Cluster
+    subgraph cluster_hardware {
+        label = "Hardware (Android/Termux)";
+        style = dashed;
+        color = gray;
+        
+        node [shape=cylinder, fillcolor=lightgrey];
+        RAM [label="LPDDR RAM\n(Shared)"];
+        
+        node [shape=component, fillcolor=salmon];
+        CPU [label="CPU Cores\n(4 Threads)"];
+        
+        edge [dir=both, label="30 GB/s", style=bold];
+        CPU -> RAM;
+    }
+
+    // Timeline Legend
+    subgraph cluster_timeline {
+        label = "Step Timeline";
+        style = solid;
+        color = black;
+        node [shape=circle, width=0.5, style=filled, fillcolor=white];
+        t0 [label="t0"];
+        t1 [label="t1"];
+        t2 [label="t2"];
+        t3 [label="t3"];
+        t4 [label="t4"];
+        t5 [label="t5"];
+        
+        t0 -> t1 -> t2 -> t3 -> t4 -> t5 [style=invis];
+    }
+
+    // Inference Flow
+    subgraph cluster_decode {
+        label = "Decode Step (Single Token)";
+        style = rounded;
+        color = blue;
+
+        // Input
+        InputID [label="Token ID\n(i32)", shape=circle, fillcolor=white];
+        
+        // Model Components
+        Embedding [label="Embedding\nLookup", fillcolor=lightyellow];
+        
+        subgraph cluster_layer {
+            label = "Transformer Block (x32)";
+            style = filled;
+            color = lightgrey;
+            
+            RMSNorm1 [label="RMSNorm\n(Attn)"];
+            QKV [label="QKV Proj\n(Linear)"];
+            RoPE [label="RoPE\n(Rotary Emb)"];
+            Attn [label="Flash/SDPA\nAttention"];
+            O_Proj [label="O Proj\n(Linear)"];
+            Add1 [label="Residual\nAdd"];
+            
+            RMSNorm2 [label="RMSNorm\n(FFN)"];
+            MLP_Gate [label="MLP Gate\n(SiLU)"];
+            MLP_Up [label="MLP Up"];
+            MLP_Down [label="MLP Down"];
+            Add2 [label="Residual\nAdd"];
+        }
+        
+        NormFinal [label="RMSNorm\n(Final)"];
+        LM_Head [label="LM Head\n(Linear)", fillcolor=lightyellow];
+        Sampler [label="Sampler\n(Top-K/P)", shape=hexagon, fillcolor=lightgreen];
+        NextToken [label="Next Token\n(i32)", shape=circle, fillcolor=white];
+
+        // Edges
+        InputID -> Embedding [label="1x1"];
+        Embedding -> RMSNorm1 [label="1x4096\n(f16)"];
+        
+        RMSNorm1 -> QKV [label="1x4096"];
+        QKV -> RoPE [label="1x(32+8+8)x128"];
+        
+        // KV Cache Interaction
+        KVCache [label="KV Cache\n(128 MB)", shape=database, fillcolor=gold];
+        RoPE -> KVCache [label="Write k,v\n(t3)", color=red];
+        KVCache -> Attn [label="Read history\n(1024 ctx)", color=blue];
+        
+        RoPE -> Attn [label="q, k, v"];
+        Attn -> O_Proj [label="1x4096"];
+        O_Proj -> Add1;
+        
+        // Skip connection 1
+        Embedding -> Add1 [style=dashed, label="Residual"];
+        
+        Add1 -> RMSNorm2;
+        RMSNorm2 -> MLP_Gate;
+        RMSNorm2 -> MLP_Up;
+        
+        MLP_Gate -> MLP_Down [label="Gate * Up"];
+        MLP_Up -> MLP_Down [style=invis]; // Layout hint
+        
+        MLP_Down -> Add2;
+        
+        // Skip connection 2
+        Add1 -> Add2 [style=dashed, label="Residual"];
+        
+        Add2 -> NormFinal;
+        NormFinal -> LM_Head [label="1x4096"];
+        LM_Head -> Sampler [label="1x32k\n(Logits)"];
+        Sampler -> NextToken;
+    }
+    
+    // Hardware Mapping (Conceptual)
+    edge [style=dotted, color=grey, constraint=false];
+    Embedding -> RAM [label="Read Weights\n(4.1 GB total)"];
+    QKV -> CPU;
+    Attn -> CPU;
+    MLP_Down -> CPU;
+    KVCache -> RAM;
+}

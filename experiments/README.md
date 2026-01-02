@@ -14,3 +14,4 @@ Current buckets:
 - `experiments/noxrs/` — Rust process runner prototype.
 - `experiments/engine/` — Rust orchestrator scaffold.
 - `experiments/zig-infer/` — Zig inference scaffold.
+- `experiments/weights_kernel/` — packed-weight micro-kernel prototype.

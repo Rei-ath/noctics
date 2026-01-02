@@ -26,6 +26,28 @@ type runStats struct {
 
 const metricsPrefix = "NR|"
 
+type triBool struct {
+	value bool
+	set   bool
+}
+
+func (t *triBool) String() string {
+	if t == nil {
+		return "false"
+	}
+	return strconv.FormatBool(t.value)
+}
+
+func (t *triBool) Set(s string) error {
+	val, err := strconv.ParseBool(s)
+	if err != nil {
+		return err
+	}
+	t.value = val
+	t.set = true
+	return nil
+}
+
 type streamWriter struct {
 	writer     *bufio.Writer
 	flushBytes int
@@ -83,8 +105,8 @@ func main() {
 		repeatPen  = flag.Float64("repeat-penalty", 1.05, "Repetition penalty")
 		fast       = flag.Bool("fast", false, "Fast/greedy sampling preset for lower latency")
 		rawOut     = flag.Bool("raw", false, "Emit only generated tokens (no prefix/newlines)")
-		prepack    = flag.Bool("prepack", false, "Preload+lock model weights in RAM (mlock) for faster inference")
-		prefetch   = flag.Bool("prefetch", false, "Warm OS cache by sequentially reading the model file")
+		prepack    = &triBool{}
+		prefetch   = &triBool{}
 		streamBuf  = flag.Int("stream-bytes", 0, "Buffer N bytes before flushing output (0 = flush each token)")
 		kvWindow   = flag.Int("kv-window", 0, "Sliding KV window size (0 = disabled)")
 		metrics    = flag.Bool("metrics", false, "Emit per-token logit metrics to stderr (NR|token|max|second|margin)")
@@ -100,6 +122,8 @@ func main() {
 		systemMsg  = flag.String("system", "", "System prompt for -chat (default: minimal assistant)")
 		cotMode    = flag.Bool("cot", false, "For -chat: request chain-of-thought style reasoning (more tokens, slower end-to-end)")
 	)
+	flag.Var(prepack, "prepack", "Preload+lock model weights in RAM (mlock) for faster inference")
+	flag.Var(prefetch, "prefetch", "Warm OS cache by sequentially reading the model file")
 	flag.Parse()
 
 	if *fast {
@@ -136,6 +160,9 @@ func main() {
 		*modelPath = filepath.Join(root, "assets", "models", "nox.gguf")
 	}
 	threads := detectThreads()
+	autoPrefetch, autoPrepack := autoWarmupFlags(*modelPath)
+	prefetchOn := resolveTriBool(prefetch, "NOX_PREFETCH", autoPrefetch)
+	prepackOn := resolveTriBool(prepack, "NOX_PREPACK", autoPrepack)
 
 	defaultSystem := *systemMsg
 	if defaultSystem == "" && (*chatMode || *cotMode) {
@@ -149,14 +176,14 @@ func main() {
 	}
 
 	fmt.Fprintf(os.Stderr, "loading model: %s (threads=%d ctx=%d batch=%d)\n", *modelPath, threads, *ctxLength, *batchSize)
-	if *prepack {
+	if prepackOn {
 		if llama.SupportsMlock() {
 			fmt.Fprintln(os.Stderr, "prepack: mlock enabled")
 		} else {
 			fmt.Fprintln(os.Stderr, "prepack: mlock not supported on this device")
 		}
 	}
-	if *prefetch {
+	if prefetchOn {
 		if err := prefetchModel(*modelPath); err != nil {
 			fmt.Fprintf(os.Stderr, "prefetch failed: %v\n", err)
 		}
@@ -166,7 +193,7 @@ func main() {
 
 	model, err := llama.LoadModelFromFile(*modelPath, llama.ModelParams{
 		UseMmap:  true,
-		UseMlock: *prepack,
+		UseMlock: prepackOn,
 		Progress: func(p float32) {
 			// keep stderr quiet; uncomment for progress
 			_ = p
@@ -615,6 +642,41 @@ func shiftKvCache(ctx *llama.Context, curPos int, window int) int {
 	ctx.KvCacheSeqRm(0, 0, discard)
 	ctx.KvCacheSeqAdd(0, discard, curPos, -discard)
 	return curPos - discard
+}
+
+func envBool(name string) (bool, bool) {
+	val, ok := os.LookupEnv(name)
+	if !ok {
+		return false, false
+	}
+	parsed, err := strconv.ParseBool(val)
+	if err != nil {
+		return false, false
+	}
+	return parsed, true
+}
+
+func resolveTriBool(flag *triBool, envKey string, auto bool) bool {
+	if flag != nil && flag.set {
+		return flag.value
+	}
+	if envKey != "" {
+		if val, ok := envBool(envKey); ok {
+			return val
+		}
+	}
+	return auto
+}
+
+func autoWarmupFlags(modelPath string) (bool, bool) {
+	const autoPrefetchMin = int64(1 << 30) // 1 GiB
+	const autoPrepackMin = int64(1 << 30)  // 1 GiB
+	info, err := os.Stat(modelPath)
+	if err != nil {
+		return false, false
+	}
+	size := info.Size()
+	return size >= autoPrefetchMin, size >= autoPrepackMin
 }
 
 func prefetchModel(path string) error {

@@ -62,10 +62,10 @@ def _resolve_runner_path() -> Optional[str]:
         if candidate.exists():
             return str(candidate)
     root = Path(__file__).resolve().parents[2]
-    global_bin = root / "bin" / "noxlocal"
+    global_bin = root / "bin" / "runox"
     if global_bin.exists():
         return str(global_bin)
-    legacy = root / "localrunner" / "noxlocal"
+    legacy = root / "runox" / "runox"
     if legacy.exists():
         return str(legacy)
     return None

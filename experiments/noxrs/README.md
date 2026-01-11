@@ -2,7 +2,7 @@
 
 Minimal, dependency-free Rust binary that replaces the Python CLI for pure
 process-based operation. It reads prompts from stdin or argv, spawns the local
-runner (`bin/noxlocal` or `noxpy/localrunner/noxlocal`), and streams stdout
+runner (`bin/runox` or `noxpy/runox/runox`), and streams stdout
 back immediately (stdin/stdout only, no HTTP).
 
 Run:
@@ -14,7 +14,7 @@ echo "hi" | cargo run                    # prompt via stdin
 
 Environment knobs:
 - `NOX_LOCAL_RUNNER` — path to runner binary (defaults depend on runner style)
-- `NOX_RUNNER_STYLE` — `noxlocal` (default), `llama` (llama-completion), or `llama-simple`
+- `NOX_RUNNER_STYLE` — `runox` (default), `llama` (llama-completion), or `llama-simple`
 - `NOX_MODEL_PATH` — model gguf path (defaults to `assets/models/mistral-7b-q4.gguf` then `assets/models/nox.gguf` if present)
 - `NOX_CTX`, `NOX_MAX_TOKENS`, `NOX_BATCH`, `NOX_TEMP`, `NOX_TOP_P`, `NOX_TOP_K`, `NOX_NUM_THREADS`
 - `NOX_RAW=1` — pass `-raw` to suppress prefixes from the runner
@@ -23,7 +23,7 @@ Environment knobs:
 - `NOX_NO_WARMUP=1` or `NOX_WARMUP=1` — control llama-completion warmup (default: off for stability)
 - `NOX_EMULATE_A1000=1` — simulate fast streaming (no model call); see simulation env vars below
 - `NOX_CHIP_EMU=1` — functional chip emulation (forces contract defaults and CPU reference runner)
-- `NOX_PREPACK=1` — enable model prepack in the `noxlocal` runner (mlock weights if supported)
+- `NOX_PREPACK=1` — enable model prepack in the `runox` runner (mlock weights if supported)
 For Vulkan on Android, set `VK_ICD_FILENAMES` to a valid ICD JSON (see `temp/vulkan.adreno.json` if present).
 
 Contract defaults (unless env overrides): `ctx=1024`, `batch=1`, `max_tokens=128`, `temp=0`, `top_p=1`, `top_k=1`. See `CONTRACT.md`.
@@ -34,7 +34,7 @@ Simulation env vars (used when `NOX_EMULATE_A1000=1`):
 - `NOX_SIM_TEXT` — override the emitted response text
 
 Runner defaults:
-- `noxlocal`: `bin/noxlocal` or `noxpy/localrunner/noxlocal`
+- `runox`: `bin/runox` or `noxpy/runox/runox`
 - `llama-completion`: `bin/llama-completion` or `temp/llama.cpp/build/bin/llama-completion`
 - `llama-simple`: `bin/llama-simple` or `temp/llama.cpp/build/bin/llama-simple`
 

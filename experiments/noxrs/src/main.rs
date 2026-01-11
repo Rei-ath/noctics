@@ -303,9 +303,9 @@ impl Config {
         }
         let candidates: &[PathBuf] = match self.runner_style {
             RunnerStyle::NoxLocal => &[
-                PathBuf::from("bin/noxlocal"),
-                PathBuf::from("noxpy/localrunner/noxlocal"),
-                PathBuf::from("../noxpy/localrunner/noxlocal"),
+                PathBuf::from("bin/runox"),
+                PathBuf::from("noxpy/runox/runox"),
+                PathBuf::from("../noxpy/runox/runox"),
             ],
             RunnerStyle::LlamaCompletion => &[
                 PathBuf::from("bin/llama-completion"),
@@ -356,7 +356,7 @@ enum RunnerStyle {
 
 impl RunnerStyle {
     fn from_env() -> Self {
-        let style = env::var("NOX_RUNNER_STYLE").unwrap_or_else(|_| "noxlocal".to_string());
+        let style = env::var("NOX_RUNNER_STYLE").unwrap_or_else(|_| "runox".to_string());
         let value = style.trim().to_ascii_lowercase();
         if value.contains("simple") {
             RunnerStyle::LlamaSimple
@@ -427,7 +427,7 @@ fn run_persistent(cfg: &Config) -> io::Result<()> {
     if !matches!(cfg.runner_style, RunnerStyle::NoxLocal) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "persistent mode requires NOX_RUNNER_STYLE=noxlocal",
+            "persistent mode requires NOX_RUNNER_STYLE=runox",
         ));
     }
     let runner = cfg

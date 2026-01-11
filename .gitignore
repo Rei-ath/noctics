@@ -110,6 +110,6 @@ bin/*
 !bin/.gitkeep
 
 # Localrunner build artifacts
-noxpy/localrunner/noxlocal*
+noxpy/runox/runox*
 
 # Miscellaneous

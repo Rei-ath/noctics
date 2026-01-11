@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build the Go-based local runner into bin/noxlocal (global binary).
+# Build the Go-based local runner into bin/runox (global binary).
 
 ROOT="$(cd -- "$(dirname "$0")/.." && pwd)"
-SRC="$ROOT/noxpy/localrunner"
-OUT="$ROOT/bin/noxlocal"
+SRC="$ROOT/noxpy/runox"
+OUT="$ROOT/bin/runox"
 USE_DOTPROD=0
 USE_REPACK=0
 
@@ -13,7 +13,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --dp|--dotprod)
       USE_DOTPROD=1
-      OUT="$ROOT/bin/noxlocal_dp"
+      OUT="$ROOT/bin/runox_dp"
       shift
       ;;
     --repack)
@@ -69,6 +69,6 @@ export CGO_CFLAGS
 export CGO_CXXFLAGS
 export CGO_CPPFLAGS
 
-echo "Building noxlocal -> $OUT"
+echo "Building runox -> $OUT"
 (cd "$SRC" && go build -o "$OUT" ./...)
 echo "Done. Binary size: $(du -h "$OUT" | cut -f1)"

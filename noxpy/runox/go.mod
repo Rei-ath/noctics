@@ -1,4 +1,4 @@
-module noxlocal
+module runox
 
 go 1.24.1
 

@@ -26,6 +26,24 @@ type runStats struct {
 
 const metricsPrefix = "NR|"
 
+var tsEnabled bool
+var tsBase time.Time
+
+func logStamp(label string) {
+	if !tsEnabled {
+		return
+	}
+	now := time.Now()
+	fmt.Fprintf(os.Stderr, "TS|%s|%s|+%dms\n", label, now.Format(time.RFC3339Nano), now.Sub(tsBase).Milliseconds())
+}
+
+func logStampf(format string, args ...interface{}) {
+	if !tsEnabled {
+		return
+	}
+	logStamp(fmt.Sprintf(format, args...))
+}
+
 type triBool struct {
 	value bool
 	set   bool
@@ -110,6 +128,7 @@ func main() {
 		streamBuf  = flag.Int("stream-bytes", 0, "Buffer N bytes before flushing output (0 = flush each token)")
 		kvWindow   = flag.Int("kv-window", 0, "Sliding KV window size (0 = disabled)")
 		metrics    = flag.Bool("metrics", false, "Emit per-token logit metrics to stderr (NR|token|max|second|margin)")
+		timestamps = flag.Bool("timestamps", false, "Emit timestamped lifecycle markers to stderr")
 		serve      = flag.Bool("serve", false, "Serve prompts from stdin (one per line)")
 		serveRS    = flag.Bool("serve-rs", false, "Use ASCII record separator (0x1e) as prompt delimiter")
 		keepCache  = flag.Bool("keep-cache", false, "Reuse KV cache between prompts when prefix matches")
@@ -159,6 +178,9 @@ func main() {
 	if *modelPath == "" {
 		*modelPath = filepath.Join(root, "assets", "models", "nox.gguf")
 	}
+	tsEnabled = *timestamps
+	tsBase = time.Now()
+	logStamp("start")
 	threads := detectThreads()
 	autoPrefetch, autoPrepack := autoWarmupFlags(*modelPath)
 	prefetchOn := resolveTriBool(prefetch, "NOX_PREFETCH", autoPrefetch)
@@ -184,13 +206,16 @@ func main() {
 		}
 	}
 	if prefetchOn {
+		logStamp("prefetch_start")
 		if err := prefetchModel(*modelPath); err != nil {
 			fmt.Fprintf(os.Stderr, "prefetch failed: %v\n", err)
 		}
+		logStamp("prefetch_end")
 	}
 
 	llama.BackendInit()
 
+	logStamp("model_load_start")
 	model, err := llama.LoadModelFromFile(*modelPath, llama.ModelParams{
 		UseMmap:  true,
 		UseMlock: prepackOn,
@@ -203,24 +228,30 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to load model: %v\n", err)
 		os.Exit(1)
 	}
+	logStamp("model_load_end")
 	defer llama.FreeModel(model)
 
+	logStamp("context_create_start")
 	ctxParams := llama.NewContextParams(*ctxLength, *batchSize, 1, threads, ml.FlashAttentionAuto, "")
 	ctx, err := llama.NewContextWithModel(model, ctxParams)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to create context: %v\n", err)
 		os.Exit(1)
 	}
+	logStamp("context_create_end")
 
 	var loadedTokens []int
 	if *stateLoad != "" {
+		logStamp("state_load_start")
 		loadedTokens, err = ctx.StateLoadFile(*stateLoad, *ctxLength)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to load state: %v\n", err)
 			os.Exit(1)
 		}
+		logStamp("state_load_end")
 	}
 
+	logStamp("sampler_create_start")
 	sampler, err := llama.NewSamplingContext(model, llama.SamplingParams{
 		TopK:          *topK,
 		TopP:          float32(*topP),
@@ -232,12 +263,15 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed to create sampler: %v\n", err)
 		os.Exit(1)
 	}
+	logStamp("sampler_create_end")
 
+	logStamp("batch_alloc_start")
 	batch, err := llama.NewBatch(*batchSize, 1, 0)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "failed to allocate batch: %v\n", err)
 		os.Exit(1)
 	}
+	logStamp("batch_alloc_end")
 	defer batch.Free()
 
 	appendFlag := *appendOnly
@@ -252,6 +286,7 @@ func main() {
 		if *chatMode || *cotMode || *systemMsg != "" {
 			fmt.Fprintln(os.Stderr, "note: -chat/-cot/-system are not applied in -serve mode")
 		}
+		logStamp("serve_loop_start")
 		if err := serveLoop(ctx, model, sampler, batch, streamer, *maxTokens, *rawOut, *serveRS, keepFlag, appendFlag, *inputOnly, *stateSave, loadedTokens, *kvWindow, *metrics); err != nil {
 			fmt.Fprintf(os.Stderr, "serve loop failed: %v\n", err)
 			os.Exit(1)
@@ -270,10 +305,12 @@ func main() {
 		statsPtr = &stats
 	}
 	if len(loadedTokens) == 0 {
+		logStamp("run_prompt_start")
 		if err := runPrompt(prompt, ctx, model, sampler, batch, streamer, *maxTokens, *rawOut, statsPtr, *stateSave, *kvWindow, *metrics); err != nil {
 			fmt.Fprintf(os.Stderr, "inference failed: %v\n", err)
 			os.Exit(1)
 		}
+		logStamp("run_prompt_end")
 	} else {
 		toks, err := tokenizePrompt(model, prompt, true)
 		if err != nil {
@@ -378,6 +415,7 @@ func serveLoop(ctx *llama.Context, model *llama.Model, sampler *llama.SamplingCo
 		if prompt == "exit" || prompt == "quit" {
 			return nil
 		}
+		logStamp("serve_prompt_start")
 		start := time.Now()
 		toks, err := tokenizePrompt(model, prompt, appendOnly && len(prevTokens) > 0)
 		if err != nil {
@@ -438,6 +476,7 @@ func serveLoop(ctx *llama.Context, model *llama.Model, sampler *llama.SamplingCo
 		if !rawOut {
 			fmt.Fprintf(os.Stderr, "\ncompleted in %s\n", time.Since(start).Round(time.Millisecond))
 		}
+		logStamp("serve_prompt_end")
 	}
 }
 
@@ -519,6 +558,7 @@ func runTokens(toks []int, startPos int, posOffset int, ctx *llama.Context, mode
 		return nil, fmt.Errorf("prompt tokens (%d) exceed kv-window (%d)", posOffset+len(toks), kvWindow)
 	}
 
+	logStamp("prefill_start")
 	prefillStart := time.Now()
 	pos := startPos
 	for pos < len(toks) {
@@ -537,10 +577,12 @@ func runTokens(toks []int, startPos int, posOffset int, ctx *llama.Context, mode
 			return nil, fmt.Errorf("decode (prompt) failed: %v", err)
 		}
 		pos += chunk
+		logStampf("prefill_chunk pos=%d len=%d", pos, chunk)
 	}
 	if stats != nil {
 		stats.Prefill = time.Since(prefillStart)
 	}
+	logStamp("prefill_end")
 	if stateSave != nil {
 		if err := stateSave(); err != nil {
 			return nil, err
@@ -555,6 +597,7 @@ func runTokens(toks []int, startPos int, posOffset int, ctx *llama.Context, mode
 
 	generated := make([]int, 0, maxTokens)
 	genStart := time.Now()
+	logStamp("gen_start")
 	for i := 0; i < maxTokens; i++ {
 		if kvWindow > 0 && curPos >= kvWindow {
 			curPos = shiftKvCache(ctx, curPos, kvWindow)
@@ -592,6 +635,7 @@ func runTokens(toks []int, startPos int, posOffset int, ctx *llama.Context, mode
 			margin := max1 - max2
 			fmt.Fprintf(os.Stderr, "%s%d|%.6f|%.6f|%.6f\n", metricsPrefix, token, max1, max2, margin)
 		}
+		logStampf("gen_token idx=%d id=%d", i+1, token)
 
 		lastToken = token
 		curPos++
@@ -603,6 +647,7 @@ func runTokens(toks []int, startPos int, posOffset int, ctx *llama.Context, mode
 		stats.GeneratedTokens = len(generated)
 		stats.Generate = time.Since(genStart)
 	}
+	logStamp("gen_end")
 	return generated, nil
 }
 

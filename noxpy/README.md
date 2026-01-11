@@ -9,7 +9,7 @@ python main.py --help
 ```
 
 HTTP bindings remain for compatibility, but the runtime now prefers a local
-process runner (`bin/noxlocal` or `$NOX_LOCAL_RUNNER`) when present.
+process runner (`bin/runox` or `$NOX_LOCAL_RUNNER`) when present.
 
 **Locked version:** `0.1.39` (derived from the commit count on `main`).
 

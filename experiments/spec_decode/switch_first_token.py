@@ -18,14 +18,14 @@ def resolve_runner(root: Path, override: str | None) -> str:
     if override:
         return override
     candidates = [
-        root / "bin" / "noxlocal",
-        root / "noxpy" / "localrunner" / "noxlocal",
-        root.parent / "noxpy" / "localrunner" / "noxlocal",
+        root / "bin" / "runox",
+        root / "noxpy" / "runox" / "runox",
+        root.parent / "noxpy" / "runox" / "runox",
     ]
     for candidate in candidates:
         if candidate.exists():
             return str(candidate)
-    return "noxlocal"
+    return "runox"
 
 
 def run_model(
@@ -96,7 +96,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Run 7B for first token, then continue with 0.5B."
     )
-    parser.add_argument("--runner", default=None, help="Path to noxlocal binary")
+    parser.add_argument("--runner", default=None, help="Path to runox binary")
     parser.add_argument("--model-7b", default=None, help="Path to 7B GGUF model")
     parser.add_argument("--model-small", default=None, help="Path to 0.5B GGUF model")
     parser.add_argument("--ctx", type=int, default=1024, help="Context length")

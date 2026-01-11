@@ -53,7 +53,7 @@ def read_until_rs(proc: subprocess.Popen) -> bytes:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Stream prefix prompts to noxlocal.")
+    parser = argparse.ArgumentParser(description="Stream prefix prompts to runox.")
     parser.add_argument(
         "text",
         nargs="?",
@@ -61,7 +61,7 @@ def main() -> int:
         help="Text to send as growing prefixes",
     )
     parser.add_argument("--model", default=None, help="Path to GGUF model")
-    parser.add_argument("--runner", default=None, help="Path to noxlocal binary")
+    parser.add_argument("--runner", default=None, help="Path to runox binary")
     parser.add_argument("--ctx", type=int, default=128, help="Context length")
     parser.add_argument("--batch", type=int, default=1, help="Batch size")
     parser.add_argument("--max-tokens", type=int, default=2, help="Tokens per prefix")
@@ -76,7 +76,7 @@ def main() -> int:
     args = parser.parse_args()
 
     root = repo_root()
-    runner = resolve_path(args.runner, root / "bin" / "noxlocal")
+    runner = resolve_path(args.runner, root / "bin" / "runox")
     model = resolve_path(args.model, root / "assets" / "models" / "nox.gguf")
 
     cmd = [
@@ -120,7 +120,7 @@ def main() -> int:
 
     stdin = proc.stdin
     if stdin is None:
-        print("noxlocal stdin unavailable", file=sys.stderr)
+        print("runox stdin unavailable", file=sys.stderr)
         return 1
 
     text = args.text

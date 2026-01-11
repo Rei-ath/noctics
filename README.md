@@ -4,6 +4,27 @@ Runox is the local process runner that loads a GGUF model and streams tokens
 over stdout. It is built from the Go sources under `noxpy/runox/` and is used by
 Noctics when a local runner is available.
 
+## Minimal download
+Runox only needs two files at runtime:
+1) the `runox` binary
+2) a GGUF model file (for example `nox.gguf`)
+
+If you want to build from source without cloning the full repo, use a sparse
+checkout that only pulls the runner sources and the vendored Ollama tree:
+
+```sh
+git clone --filter=blob:none --sparse https://github.com/Rei-ath/noctics.git
+cd noctics
+git sparse-checkout set scripts/build_runox.sh noxpy/runox noxpy/vendor/ollama
+```
+
+As of this README, the build inputs are:
+- `noxpy/runox/` (3 tracked files: `go.mod`, `main.go`, `README.md`)
+- `noxpy/vendor/ollama/` (769 tracked files)
+- `scripts/build_runox.sh` (1 tracked file)
+
+Bring your own GGUF and pass `-model /path/to/model.gguf` when running.
+
 ## Build
 From the repo root:
 

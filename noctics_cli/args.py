@@ -8,30 +8,24 @@ from typing import List
 
 from nox_env import get_env
 
-DEFAULT_URL = "http://127.0.0.1:11434/api/generate"
+DEFAULT_URL = "process://runox"
 
 __all__ = ["DEFAULT_URL", "parse_args"]
 
 
 def parse_args(argv: List[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Interactive Chat Completions CLI",
+        description="Interactive local runner CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
             "  python main.py --stream\n"
-            "  python main.py --instrument claude --stream\n"
             "  python main.py --user 'Explain X' --stream\n"
             "  python main.py --messages msgs.json --stream\n"
             "  python main.py --sessions-ls\n"
             "  python main.py --sessions-load session-20250913-234409\n"
             "  python main.py --sessions-rename session-20250914-010016 'My Title'\n"
         ),
-    )
-    parser.add_argument(
-        "-U", "--url",
-        default=get_env("NOX_LLM_URL"),
-        help="Endpoint URL (env NOX_LLM_URL)",
     )
     parser.add_argument(
         "-M", "--model",
@@ -42,6 +36,31 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         "-S", "--system",
         default=None,
         help="System message (defaults to memory/system_prompt.md; ignored if --messages is used)",
+    )
+    parser.add_argument(
+        "--auto-run",
+        dest="auto_run",
+        action="store_true",
+        default=None,
+        help="Execute [run] blocks automatically",
+    )
+    parser.add_argument(
+        "--no-auto-run",
+        dest="auto_run",
+        action="store_false",
+        help="Disable automatic [run] execution",
+    )
+    parser.add_argument(
+        "--cwd",
+        default=None,
+        help="Base directory for resolving --file paths (default: current directory)",
+    )
+    parser.add_argument(
+        "--file",
+        dest="files",
+        action="append",
+        default=[],
+        help="Append a file's contents to the system context (repeatable)",
     )
     parser.add_argument("-u", "--user", default=None, help="Optional initial user message")
     parser.add_argument(
@@ -82,21 +101,6 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         "--show-think",
         action="store_true",
         help="Include assistant <think> blocks in console output and session logs.",
-    )
-    parser.add_argument(
-        "-k", "--api-key",
-        default=(get_env("NOX_LLM_API_KEY") or os.getenv("OPENAI_API_KEY")),
-        help="Optional API key for Authorization header (env NOX_LLM_API_KEY | OPENAI_API_KEY)",
-    )
-    parser.add_argument(
-        "-H",
-        "--instrument",
-        dest="instrument",
-        default=None,
-        help=(
-            "Optional instrument name label used when Nox requests an external instrument; "
-            "does not skip API calls."
-        ),
     )
     parser.add_argument(
         "-L", "--sessions-ls",
@@ -156,30 +160,9 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
         action="store_true",
         help="Run as the project developer (skip user onboarding and log as developer)",
     )
-    default_anon = (
-        (get_env("NOX_INSTRUMENT_ANON") or "1").lower() not in {"0", "false", "off", "no"}
-    )
-    parser.add_argument(
-        "--anon-instrument",
-        dest="anon_instrument",
-        action="store_true",
-        default=default_anon,
-        help="Reserved sanitization toggle for future instrument integration",
-    )
-    parser.add_argument(
-        "--no-anon-instrument",
-        dest="anon_instrument",
-        action="store_false",
-        help="Disable the reserved instrument sanitization toggle",
-    )
     parser.add_argument(
         "--version",
         action="store_true",
         help="Print the Nox version and exit",
-    )
-    parser.add_argument(
-        "--setup",
-        action="store_true",
-        help="Run the instrument setup wizard and exit",
     )
     return parser.parse_args(argv)

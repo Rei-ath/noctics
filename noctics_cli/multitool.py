@@ -5,9 +5,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import List, Optional, Sequence, Callable
 
 
 def _ensure_local_core_path() -> None:
@@ -124,14 +125,59 @@ def _bootstrap_core() -> None:
         ) from exc
 
 
-_bootstrap_core()
-from noctics_cli.app import main as chat_main  # noqa: E402
-from noctics_cli.tui import main as tui_main  # noqa: E402
+_CORE_READY = False
+
+
+def _ensure_core_loaded() -> None:
+    global _CORE_READY
+    if _CORE_READY:
+        return
+    _bootstrap_core()
+    _CORE_READY = True
+
+
+def _plain_color(text: str, **_: object) -> str:
+    return text
+
+
+def _resolve_color() -> Callable[..., str]:
+    if not _CORE_READY:
+        return _plain_color
+    return color
+
+
+def _read_version_from_source() -> Optional[str]:
+    repo_root = Path(__file__).resolve().parents[1]
+    candidates = [
+        repo_root / "core" / "central" / "version.py",
+        repo_root / "core_pinaries" / "central" / "version.py",
+    ]
+    pattern = re.compile(r"__version__\s*=\s*['\"]([^'\"]+)['\"]")
+    for path in candidates:
+        try:
+            if not path.exists():
+                continue
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        match = pattern.search(text)
+        if match:
+            return match.group(1).strip()
+    return None
+
+
+def _get_version() -> str:
+    version = _read_version_from_source()
+    if version:
+        return version
+    _ensure_core_loaded()
+    return __version__
 
 
 def _print_root_help() -> None:
+    color_fn = _resolve_color()
     print(
-        color("Noctics CLI", fg="magenta", bold=True),
+        color_fn("Noctics CLI", fg="magenta", bold=True),
         "- multitool wrapper\n",
         sep=" ",
         end="",
@@ -155,6 +201,9 @@ def _print_root_help() -> None:
 
 
 def _run_chat(argv: Sequence[str]) -> int:
+    _ensure_core_loaded()
+    load_local_dotenv(Path(__file__).resolve().parent)
+    from noctics_cli.app import main as chat_main
     return chat_main(list(argv))
 
 
@@ -220,6 +269,8 @@ def _resolve_root(path_arg: Optional[str]) -> Optional[Path]:
 
 
 def _run_sessions(argv: Sequence[str]) -> int:
+    _ensure_core_loaded()
+    load_local_dotenv(Path(__file__).resolve().parent)
     parser = _build_sessions_parser()
     args = parser.parse_args(list(argv))
 
@@ -280,9 +331,6 @@ def _run_sessions(argv: Sequence[str]) -> int:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Entrypoint mirroring the Codex CLI multitool UX."""
-
-    load_local_dotenv(Path(__file__).resolve().parent)
-
     tokens = list(argv) if argv is not None else list(sys.argv[1:])
 
     if not tokens:
@@ -294,7 +342,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     if first in {"-V", "--version", "version"}:
-        print(__version__)
+        print(_get_version())
         return 0
 
     if first == "chat":
@@ -304,6 +352,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _run_sessions(tokens[1:])
 
     if first == "tui":
+        _ensure_core_loaded()
+        load_local_dotenv(Path(__file__).resolve().parent)
+        from noctics_cli.tui import main as tui_main
         return tui_main(tokens[1:])
 
     # Compatibility: fall back to the legacy chat parser when no subcommand is used.

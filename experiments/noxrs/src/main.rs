@@ -50,7 +50,7 @@ fn main() -> io::Result<()> {
     cmd.stdout(Stdio::piped()).stderr(Stdio::inherit());
 
     match cfg.runner_style {
-        RunnerStyle::NoxLocal => {
+        RunnerStyle::Runox => {
             if cfg.raw {
                 cmd.arg("-raw");
             }
@@ -189,7 +189,7 @@ impl Config {
             .or_else(|| env_bool("NOX_EMULATE_CHIP"))
             .unwrap_or(false);
         let runner_style = if chip_emu {
-            RunnerStyle::NoxLocal
+            RunnerStyle::Runox
         } else {
             RunnerStyle::from_env()
         };
@@ -302,7 +302,7 @@ impl Config {
             }
         }
         let candidates: &[PathBuf] = match self.runner_style {
-            RunnerStyle::NoxLocal => &[
+            RunnerStyle::Runox => &[
                 PathBuf::from("bin/runox"),
                 PathBuf::from("noxpy/runox/runox"),
                 PathBuf::from("../noxpy/runox/runox"),
@@ -349,7 +349,7 @@ impl Config {
 
 #[derive(Debug, Clone, Copy)]
 enum RunnerStyle {
-    NoxLocal,
+    Runox,
     LlamaCompletion,
     LlamaSimple,
 }
@@ -363,7 +363,7 @@ impl RunnerStyle {
         } else if value.starts_with("llama") || value == "completion" {
             RunnerStyle::LlamaCompletion
         } else {
-            RunnerStyle::NoxLocal
+            RunnerStyle::Runox
         }
     }
 }
@@ -424,7 +424,7 @@ fn is_executable(path: &Path) -> bool {
 }
 
 fn run_persistent(cfg: &Config) -> io::Result<()> {
-    if !matches!(cfg.runner_style, RunnerStyle::NoxLocal) {
+    if !matches!(cfg.runner_style, RunnerStyle::Runox) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "persistent mode requires NOX_RUNNER_STYLE=runox",

@@ -98,6 +98,8 @@ memory/early-archives/
 memory/imported/
 memory/sessions/
 memory/users/
+experiments/runox/memory/
+experiments/noxdex/memory/
 assets/models/
 nox/obb/
 noxpy/assets/models/

@@ -1,29 +1,21 @@
 """
-Interactive CLI to talk to a local OpenAI-like chat completions endpoint.
-
-Defaults mirror the provided curl and post to http://localhost:1234/v1/chat/completions.
-Supports both non-streaming and streaming (SSE) responses via --stream.
-
-No external dependencies (stdlib only).
+Interactive CLI to talk to the local runox runner (nox.gguf).
+No external network dependencies (stdlib only).
 """
 
 from __future__ import annotations
 
-import atexit
 import argparse
 import json
 import os
 import re
 import shutil
-import socket
 import subprocess
 import sys
-import time
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Dict, Any, Iterable, List, Optional
-from urllib.parse import urlparse
 try:
     import readline  # type: ignore
 except Exception:  # pragma: no cover - platform without readline
@@ -37,7 +29,6 @@ try:
     from central.colors import color
     from central.core import (
         ChatClient,
-        DEFAULT_URL as CORE_DEFAULT_URL,
     )
     from central.core import clean_public_reply
     from central.persona import resolve_persona, render_system_prompt
@@ -47,17 +38,10 @@ try:
     )
     from noxl import (
         compute_title_from_messages,
-        load_session_messages,
+        load_session_context,
         list_sessions as noxl_list_sessions,
     )
     from central.commands.completion import setup_completions
-    from central.commands.instrument import (
-        choose_instrument_interactively,
-        describe_instrument_status,
-        get_instrument_candidates,
-        instrument_automation_enabled,
-    )
-    from central.config import get_runtime_config
     from central.commands.sessions import (
         list_sessions as cmd_list_sessions,
         print_sessions as cmd_print_sessions,
@@ -73,7 +57,6 @@ try:
     )
     from central.commands.help_cmd import print_help as cmd_print_help
     from interfaces.dotenv import load_local_dotenv
-    from noctics_cli.setup import ensure_global_config_home, maybe_run_first_launch_setup
     from interfaces.dev_identity import resolve_developer_identity
     from interfaces.paths import resolve_memory_root, resolve_sessions_root
     from central.system_info import hardware_summary
@@ -113,6 +96,80 @@ THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
 
 USER_LABEL = "rei"
 ASSISTANT_LABEL = "nox"
+CODEX_LABEL = "codex"
+CODEX_TAG_RE = re.compile(r"@codex\b[ \t:,-]*", re.IGNORECASE)
+INSTRUCTION_BLOCK_RE = re.compile(r"\[(run|cmd|py)\](.*?)\[/\1\]", re.IGNORECASE | re.DOTALL)
+
+
+def _extract_codex_prompt(text: str) -> Optional[str]:
+    if not text or not CODEX_TAG_RE.search(text):
+        return None
+    cleaned = CODEX_TAG_RE.sub("", text).strip()
+    return cleaned
+
+
+def _resolve_noxdex_command() -> Optional[List[str]]:
+    override = get_env("NOXDEX_BIN")
+    if override:
+        candidate = Path(override).expanduser()
+        if candidate.exists():
+            return [str(candidate)]
+
+    repo_root = Path(__file__).resolve().parents[1]
+    wrapper = repo_root / "bin" / "noxdex"
+    if wrapper.exists():
+        return [str(wrapper)]
+
+    script = repo_root / "experiments" / "noxdex" / "noxdex.py"
+    if script.exists():
+        python = get_env("NOXDEX_PYTHON") or sys.executable or "python3"
+        return [python, str(script)]
+
+    home_wrapper = Path.home() / "bin" / "noxdex"
+    if home_wrapper.exists():
+        return [str(home_wrapper)]
+
+    return None
+
+
+def _run_noxdex(prompt: str, *, stream: bool) -> str:
+    cmd = _resolve_noxdex_command()
+    if not cmd:
+        raise RuntimeError("noxdex not found. Build bin/noxdex or set NOXDEX_BIN.")
+
+    args = list(cmd)
+    if stream:
+        args.append("--stream")
+    args.append(prompt)
+
+    if stream:
+        proc = subprocess.Popen(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+        if proc.stdout is None or proc.stderr is None:
+            raise RuntimeError("noxdex output streams are unavailable.")
+        acc: List[str] = []
+        for chunk in iter(lambda: proc.stdout.read(1), ""):
+            if not chunk:
+                break
+            acc.append(chunk)
+            sys.stdout.write(chunk)
+            sys.stdout.flush()
+        stderr_text = proc.stderr.read()
+        code = proc.wait()
+        if code != 0:
+            raise RuntimeError(stderr_text.strip() or "noxdex failed.")
+        return "".join(acc).strip()
+
+    result = subprocess.run(args, capture_output=True, text=True)
+    if result.returncode != 0:
+        message = (result.stderr or result.stdout or "").strip() or "noxdex failed."
+        raise RuntimeError(message)
+    return (result.stdout or "").strip()
 
 def _read_first_prompt(candidates: Iterable[Path]) -> Optional[str]:
     """Return the first non-empty prompt from the provided candidate paths."""
@@ -128,49 +185,237 @@ def _read_first_prompt(candidates: Iterable[Path]) -> Optional[str]:
     return None
 
 
-def _configured_instrument_roster() -> List[str]:
-    """Return explicitly configured instrument names (env or config only)."""
+def _read_positive_int(raw: Optional[str]) -> int:
+    if raw is None:
+        return 0
+    try:
+        value = int(str(raw).strip())
+    except (TypeError, ValueError):
+        return 0
+    return value if value > 0 else 0
 
-    env_tokens = [
-        token.strip()
-        for token in (get_env("NOX_INSTRUMENTS") or "").split(",")
-        if token.strip()
+
+def _resolve_session_context_limits() -> tuple[int, int]:
+    raw_turns = get_env("NOX_SESSION_CONTEXT_TURNS")
+    raw_messages = get_env("NOX_SESSION_CONTEXT_MESSAGES")
+    turns = _read_positive_int(raw_turns)
+    messages = _read_positive_int(raw_messages)
+    if raw_turns is None and raw_messages is None:
+        turns = 0
+    return turns, messages
+
+
+def _resolve_cwd(raw: Optional[str]) -> Path:
+    if not raw:
+        return Path.cwd()
+    candidate = Path(raw).expanduser()
+    if not candidate.exists():
+        raise SystemExit(f"--cwd not found: {candidate}")
+    if not candidate.is_dir():
+        raise SystemExit(f"--cwd must be a directory: {candidate}")
+    return candidate.resolve()
+
+
+def _read_file_context(paths: Iterable[str], *, cwd: Path) -> tuple[str, List[str]]:
+    blocks: List[str] = []
+    labels: List[str] = []
+    for raw in paths:
+        name = (raw or "").strip()
+        if not name:
+            continue
+        path = Path(name).expanduser()
+        if not path.is_absolute():
+            path = (cwd / path).resolve()
+        if not path.exists():
+            raise SystemExit(f"--file not found: {path}")
+        if not path.is_file():
+            raise SystemExit(f"--file must be a file: {path}")
+        try:
+            content = path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            raise SystemExit(f"--file read failed ({path}): {exc}") from exc
+        try:
+            label = str(path.relative_to(cwd))
+        except ValueError:
+            label = str(path)
+        blocks.append(f"[FILE] {label}\n{content}\n[/FILE]")
+        labels.append(label)
+    return "\n\n".join(blocks), labels
+
+
+def _append_file_context(system_prompt: Optional[str], file_context: str) -> str:
+    base = (system_prompt or "").strip()
+    file_context = (file_context or "").strip()
+    if not file_context:
+        return base
+    if base and file_context in base:
+        return base
+    if not base:
+        return f"File context:\n{file_context}"
+    return f"{base}\n\nFile context:\n{file_context}"
+
+
+def _apply_file_context_to_messages(
+    messages: List[Dict[str, Any]],
+    *,
+    file_context: str,
+) -> None:
+    if not file_context:
+        return
+    sys_msgs = [m for m in messages if isinstance(m, dict) and m.get("role") == "system"]
+    if sys_msgs:
+        sys_msgs[0]["content"] = _append_file_context(
+            str(sys_msgs[0].get("content") or ""),
+            file_context,
+        )
+    else:
+        messages.insert(0, {"role": "system", "content": _append_file_context(None, file_context)})
+
+
+def _extract_instruction_blocks(text: str) -> List[Dict[str, str]]:
+    if not text:
+        return []
+    return [
+        {"kind": match.group(1).lower(), "content": match.group(2)}
+        for match in INSTRUCTION_BLOCK_RE.finditer(text)
     ]
-    if env_tokens:
-        return env_tokens
 
-    cfg = get_runtime_config().instrument
-    if cfg.roster:
-        return list(cfg.roster)
 
-    return []
+def _strip_instruction_blocks(text: str) -> str:
+    if not text:
+        return ""
+    return INSTRUCTION_BLOCK_RE.sub("", text).strip()
+
+
+def _parse_run_block(block: str) -> Dict[str, Any]:
+    instructions: Dict[str, Any] = {
+        "cmds": [],
+        "py": [],
+        "cwd": None,
+        "env": {},
+        "use": "context",
+        "label": None,
+        "lang": None,
+    }
+    for raw_line in block.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if ":" not in line:
+            continue
+        key, value = line.split(":", 1)
+        key = key.strip().lower()
+        value = value.strip()
+        if key == "cmd":
+            if value:
+                instructions["cmds"].append(value)
+        elif key in {"py", "code"}:
+            if value:
+                instructions["py"].append(value)
+        elif key in {"cwd", "dir"}:
+            instructions["cwd"] = value or None
+        elif key == "env":
+            if "=" in value:
+                env_key, env_val = value.split("=", 1)
+                env_key = env_key.strip()
+                if env_key:
+                    instructions["env"][env_key] = env_val.strip()
+        elif key == "use":
+            instructions["use"] = value.lower() or "context"
+        elif key == "label":
+            instructions["label"] = value or None
+        elif key in {"lang", "language"}:
+            instructions["lang"] = value.lower() or None
+    return instructions
+
+
+def _resolve_run_cwd(raw: Optional[str], *, base: Path) -> Path:
+    if not raw:
+        return base
+    candidate = Path(raw).expanduser()
+    if not candidate.is_absolute():
+        candidate = (base / candidate).resolve()
+    if not candidate.exists():
+        raise RuntimeError(f"run cwd not found: {candidate}")
+    if not candidate.is_dir():
+        raise RuntimeError(f"run cwd is not a directory: {candidate}")
+    return candidate
+
+
+def _build_run_env(overrides: Dict[str, str]) -> Dict[str, str]:
+    env = dict(os.environ)
+    for key, value in overrides.items():
+        env[key] = value
+    return env
+
+
+def _run_shell_command(cmd: str, *, cwd: Path, env: Dict[str, str]) -> Dict[str, Any]:
+    proc = subprocess.run(
+        cmd,
+        shell=True,
+        cwd=str(cwd),
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return {
+        "kind": "cmd",
+        "cmd": cmd,
+        "cwd": str(cwd),
+        "code": proc.returncode,
+        "stdout": proc.stdout or "",
+        "stderr": proc.stderr or "",
+    }
+
+
+def _run_python_block(code: str, *, cwd: Path, env: Dict[str, str]) -> Dict[str, Any]:
+    proc = subprocess.run(
+        [sys.executable, "-"],
+        input=code,
+        cwd=str(cwd),
+        env=env,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return {
+        "kind": "py",
+        "cmd": f"{sys.executable} -",
+        "cwd": str(cwd),
+        "code": proc.returncode,
+        "stdout": proc.stdout or "",
+        "stderr": proc.stderr or "",
+    }
+
+
+def _format_run_result(result: Dict[str, Any], *, label: Optional[str] = None) -> str:
+    lines: List[str] = []
+    if label:
+        lines.append(f"label: {label}")
+    lines.append(f"kind: {result.get('kind')}")
+    lines.append(f"cmd: {result.get('cmd')}")
+    lines.append(f"cwd: {result.get('cwd')}")
+    lines.append(f"exit: {result.get('code')}")
+    stdout = str(result.get("stdout") or "").rstrip()
+    stderr = str(result.get("stderr") or "").rstrip()
+    if stdout:
+        lines.append("stdout:")
+        lines.append(stdout)
+    if stderr:
+        lines.append("stderr:")
+        lines.append(stderr)
+    return "\n".join(lines)
 
 
 def _describe_runtime_target(url: str) -> tuple[str, str]:
     """Return human-readable runtime label and endpoint summary for status output."""
 
-    parsed = urlparse(url)
-    host = parsed.hostname or "unknown"
-    port = parsed.port
-    path = parsed.path or "/"
-
-    location = "local" if host in {"127.0.0.1", "localhost"} else "remote"
-    runtime = "HTTP"
-    lowered_host = host.lower()
-    lowered_path = path.lower()
-
-    if "api/generate" in lowered_path or port == 11434:
-        runtime = "Ollama"
-    elif "openai" in lowered_host:
-        runtime = "OpenAI"
-    elif lowered_path.startswith("/v1"):
-        runtime = "OpenAI-like"
-
-    if location == "local":
-        runtime = f"{runtime} (local)"
-
-    endpoint = f"{host}:{port}" if port else host
-    return runtime, endpoint
+    if url.startswith("process://"):
+        return "Local Runner", url.replace("process://", "", 1) or "runox"
+    if url:
+        return "Runtime", url
+    return "Runtime", "unknown"
 
 
 @dataclass(slots=True)
@@ -196,322 +441,23 @@ class MemoryOption:
     def count(self) -> int:
         return len(self.sessions)
 
-
-def _urls_equivalent(left: Optional[str], right: Optional[str]) -> bool:
-    if not left and not right:
-        return True
-    if not left or not right:
-        return False
-    return left.rstrip("/") == right.rstrip("/")
-
-
-_OLLAMA_SERVER_PROCESS: Optional[subprocess.Popen[bytes]] = None
-_OLLAMA_SERVER_HOSTPORT: Optional[str] = None
-
-
-def _bool_env(name: str, *, default: bool) -> bool:
-    raw = get_env(name)
-    if raw is None:
-        return default
-    return str(raw).strip().lower() not in {"0", "false", "off", "no"}
-
-
-def _resolve_ollama_binary() -> Optional[str]:
-    explicit = get_env("NOCTICS_OLLAMA_BIN") or get_env("OLLAMA_BIN")
-    if explicit:
-        explicit_path = Path(explicit).expanduser()
-        if explicit_path.exists():
-            return str(explicit_path)
-        detected = shutil.which(str(explicit))
-        if detected:
-            return detected
-
-    detected_default = shutil.which("ollama")
-    if detected_default:
-        return detected_default
-
-    project_root = Path(__file__).resolve().parents[1]
-    assets_bin = project_root / "assets" / "ollama" / "bin" / "ollama"
-    if assets_bin.exists():
-        return str(assets_bin)
-
-    return None
-
-
-def _is_loopback_host(hostname: Optional[str]) -> bool:
-    if not hostname:
-        return False
-    lowered = hostname.strip().lower()
-    return lowered in {"localhost", "127.0.0.1", "::1"} or lowered.startswith("127.")
-
-
-def _hostport_from_url(url: str) -> tuple[Optional[str], Optional[int], Optional[str]]:
-    parsed = urlparse(url)
-    host = parsed.hostname
-    if not host:
-        return None, None, None
-    port = parsed.port
-    if port is None:
-        scheme = (parsed.scheme or "http").lower()
-        port = 443 if scheme == "https" else 80
-    return host, port, f"{host}:{port}"
-
-
-def _wait_for_port(host: str, port: int, *, timeout: float = 15.0) -> bool:
-    deadline = time.time() + timeout
-    while time.time() < deadline:
-        try:
-            with socket.create_connection((host, port), timeout=0.5):
-                return True
-        except OSError:
-            time.sleep(0.25)
-    return False
-
-
-def _terminate_process(proc: subprocess.Popen[bytes]) -> None:
-    try:
-        proc.terminate()
-    except Exception:
-        return
-    try:
-        proc.wait(timeout=2.0)
-    except Exception:
-        try:
-            proc.kill()
-        except Exception:
-            pass
-
-
-def _ensure_local_ollama_serving(candidate_url: str) -> bool:
-    """Start Ollama when pointing at a local URL and nothing is listening."""
-
-    if not _bool_env("NOCTICS_AUTO_START_OLLAMA", default=True):
-        return False
-
-    host, port, hostport = _hostport_from_url(candidate_url)
-    if host is None or port is None or hostport is None:
-        return False
-    if not _is_loopback_host(host):
-        return False
-
-    global _OLLAMA_SERVER_PROCESS, _OLLAMA_SERVER_HOSTPORT
-    proc = _OLLAMA_SERVER_PROCESS
-    if proc is not None and proc.poll() is None:
-        return True
-
-    ollama_bin = _resolve_ollama_binary()
-    if not ollama_bin:
-        return False
-
-    env = os.environ.copy()
-    env.setdefault("OLLAMA_HOST", hostport)
-    env.setdefault("OLLAMA_KEEP_ALIVE", "24h")
-    env.setdefault("OLLAMA_CONTEXT_LENGTH", "1024")
-    env.setdefault("OLLAMA_NUM_PARALLEL", "1")
-    env.setdefault("OLLAMA_MAX_LOADED_MODELS", "1")
-    quiet = not _bool_env("NOCTICS_DEBUG_OLLAMA", default=False)
-    stdout = subprocess.DEVNULL if quiet else None
-    stderr = subprocess.DEVNULL if quiet else None
-
-    try:
-        proc = subprocess.Popen([ollama_bin, "serve"], env=env, stdout=stdout, stderr=stderr)
-    except Exception:
-        return False
-
-    _OLLAMA_SERVER_PROCESS = proc
-    _OLLAMA_SERVER_HOSTPORT = hostport
-    atexit.register(_terminate_process, proc)
-
-    if _wait_for_port(host, port, timeout=20.0):
-        return True
-
-    if proc.poll() is None:
-        _terminate_process(proc)
-    return False
-
-
-def _ollama_env_for_url(candidate_url: str) -> dict[str, str]:
-    env = os.environ.copy()
-    _, _, hostport = _hostport_from_url(candidate_url)
-    if hostport:
-        env.setdefault("OLLAMA_HOST", hostport)
-    return env
-
-
-def _list_ollama_models(ollama_bin: str, *, env: dict[str, str]) -> set[str]:
-    try:
-        output = subprocess.check_output(
-            [ollama_bin, "list"],
-            env=env,
-            stderr=subprocess.DEVNULL,
-            text=True,
-        )
-    except Exception:
-        return set()
-
-    names: set[str] = set()
-    for line in output.splitlines():
-        if not line or line.lower().startswith("name"):
-            continue
-        parts = line.split()
-        if parts:
-            names.add(parts[0].strip())
-    return names
-
-
-def _ensure_nox_model_available(candidate_url: str, model: str) -> bool:
-    model = (model or "").strip()
-    if not model:
-        return True
-
-    base = model.split(":", 1)[0].strip().lower()
-    if base != "nox":
-        return True
-
-    ollama_bin = _resolve_ollama_binary()
-    if not ollama_bin:
-        return False
-    env = _ollama_env_for_url(candidate_url)
-
-    installed = _list_ollama_models(ollama_bin, env=env)
-    if model in installed or "nox:latest" in installed or "nox" in installed:
-        return True
-
-    project_root = Path(__file__).resolve().parents[1]
-    modelfile = project_root / "assets" / "runtime" / "nox.modelfile"
-    if not modelfile.exists():
-        return False
-
-    quiet = not _bool_env("NOCTICS_DEBUG_OLLAMA", default=False)
-    stdout = subprocess.DEVNULL if quiet else None
-    stderr = subprocess.STDOUT if quiet else None
-
-    try:
-        subprocess.run(
-            [ollama_bin, "create", "nox", "-f", modelfile.name],
-            check=True,
-            env=env,
-            cwd=str(modelfile.parent),
-            stdout=stdout,
-            stderr=stderr,
-        )
-    except Exception:
-        return False
-    return True
-
-
-def _normalize_optional_env_value(value: object) -> Optional[str]:
-    if value is None:
-        return None
-    if isinstance(value, str):
-        trimmed = value.strip()
-    else:
-        trimmed = str(value).strip()
-    if not trimmed:
-        return None
-    if trimmed.lower() in {"none", "null"}:
-        return None
-    return trimmed
-
-
-def _normalize_local_ollama_url(url: Optional[str]) -> Optional[str]:
-    """Repair common Ollama URL mistakes (e.g. /api/ -> /api/generate)."""
-
-    if not url:
-        return url
-    trimmed = str(url).strip()
-    if not trimmed:
-        return None
-
-    try:
-        parsed = urlparse(trimmed)
-    except Exception:
-        return trimmed
-
-    if not parsed.scheme or not parsed.hostname:
-        return trimmed
-
-    port = parsed.port
-    if port is None:
-        scheme = (parsed.scheme or "http").lower()
-        port = 443 if scheme == "https" else 80
-
-    if port != 11434:
-        return trimmed
-
-    path = (parsed.path or "").rstrip("/")
-    if path in {"", "/api"}:
-        return parsed._replace(path="/api/generate").geturl()
-
-    return trimmed
-
-
 def _build_runtime_candidates(args: argparse.Namespace) -> List[RuntimeCandidate]:
-    """Return runtime candidates ordered by preference, including fallbacks."""
+    """Return the single local runner runtime candidate."""
 
-    local_url = _normalize_local_ollama_url(get_env("NOX_LOCAL_LLM_URL") or CLI_DEFAULT_URL) or CLI_DEFAULT_URL
-    local_model = get_env("NOX_LOCAL_LLM_MODEL") or ""
-
-    configured_url = _normalize_local_ollama_url(_normalize_optional_env_value(getattr(args, "url", None)))
     configured_model = (getattr(args, "model", None) or "").strip()
     if configured_model.lower() in {"none", "null"}:
         configured_model = ""
     if not configured_model:
         configured_model = "nox"
 
-    primary_url = configured_url or local_url
-    primary_model = configured_model
-    primary_source = "configured"
-    if not configured_url:
-        primary_source = "local default"
-        primary_model = (local_model or "").strip() or configured_model
-
-    primary = RuntimeCandidate(
-        url=primary_url,
-        model=primary_model,
-        api_key=args.api_key,
-        source=primary_source,
-    )
-    candidates: List[RuntimeCandidate] = [primary]
-
-    fallback_urls_env = get_env("NOX_LLM_FALLBACK_URLS") or ""
-    fallback_models_env = get_env("NOX_LLM_FALLBACK_MODELS") or ""
-    fallback_api_keys_env = get_env("NOX_LLM_FALLBACK_API_KEYS") or ""
-
-    fallback_urls = [
-        _normalize_local_ollama_url(value.strip()) or value.strip()
-        for value in fallback_urls_env.split(",")
-        if value.strip()
+    return [
+        RuntimeCandidate(
+            url=CLI_DEFAULT_URL,
+            model=configured_model,
+            api_key=None,
+            source="local runner",
+        )
     ]
-    fallback_models = [value.strip() for value in fallback_models_env.split(",") if value.strip()]
-    fallback_api_keys = [value.strip() for value in fallback_api_keys_env.split(",") if value.strip()]
-
-    for index, url in enumerate(fallback_urls):
-        if any(_urls_equivalent(url, existing.url) for existing in candidates):
-            continue
-        model = fallback_models[index] if index < len(fallback_models) else primary.model
-        api_key = fallback_api_keys[index] if index < len(fallback_api_keys) else primary.api_key
-        candidates.append(
-            RuntimeCandidate(
-                url=url,
-                model=model or primary.model,
-                api_key=api_key or None,
-                source=f"fallback #{index + 1}",
-            )
-        )
-
-    local_model = (local_model or "").strip()
-    if local_url and not any(_urls_equivalent(local_url, existing.url) for existing in candidates):
-        candidates.append(
-            RuntimeCandidate(
-                url=local_url,
-                model=(local_model or primary.model),
-                api_key=None,
-                source="local fallback",
-            )
-        )
-
-    return candidates
 
 
 def _partial_prefix_len(segment: str, token: str) -> int:
@@ -641,11 +587,43 @@ def _collect_memory_options(default_sessions: List[Dict[str, Any]]) -> List[Memo
 
     memory_root = resolve_memory_root()
 
+    def _resolve_noxdex_memory_root() -> Optional[Path]:
+        override = (get_env("NOXDEX_MEMORY_HOME") or get_env("CODEX_MEMORY_HOME") or "").strip()
+        if override:
+            candidate = Path(override).expanduser()
+            if candidate.exists():
+                return candidate
+        repo_root = Path(__file__).resolve().parents[1]
+        candidate = repo_root / "experiments" / "noxdex" / "memory"
+        if candidate.exists():
+            return candidate
+        return None
+
     def _sessions_for_root(candidate: Path) -> List[Dict[str, Any]]:
         try:
             return _sort_sessions(noxl_list_sessions(root=candidate))
         except Exception:
             return []
+
+    noxdex_root = _resolve_noxdex_memory_root()
+    if noxdex_root is not None:
+        try:
+            resolved_noxdex = noxdex_root.resolve()
+        except Exception:
+            resolved_noxdex = noxdex_root
+        if resolved_noxdex not in seen_roots:
+            sessions = _sessions_for_root(noxdex_root)
+            if sessions:
+                options.append(
+                    MemoryOption(
+                        key="noxdex",
+                        label="NoxdEx (Codex)",
+                        root=noxdex_root,
+                        sessions=sessions,
+                        aliases=("noxdex", "codex"),
+                    )
+                )
+                seen_roots.add(resolved_noxdex)
 
     imported_root = memory_root / "imported"
     if imported_root.exists():
@@ -694,6 +672,27 @@ def _collect_memory_options(default_sessions: List[Dict[str, Any]]) -> List[Memo
                 seen_roots.add(resolved_archives)
 
     return options
+
+
+def _resolve_memory_option(raw: str, options: List[MemoryOption]) -> Optional[MemoryOption]:
+    key = (raw or "").strip().lower()
+    if not key:
+        return None
+    for option in options:
+        if key == option.key or key in option.aliases:
+            return option
+    return None
+
+
+def _split_memory_prefix(raw: str, options: List[MemoryOption]) -> tuple[Optional[MemoryOption], str]:
+    text = (raw or "").strip()
+    if not text or ":" not in text:
+        return None, text
+    prefix, remainder = text.split(":", 1)
+    option = _resolve_memory_option(prefix, options)
+    if option is None:
+        return None, text
+    return option, remainder.strip()
 
 
 def _print_session_page(
@@ -908,7 +907,7 @@ def select_session_interactively(
             if not path:
                 print(color("No session found for that selection.", fg="red"))
                 continue
-            loaded = load_session_messages(path)
+            loaded = load_session_context(path)
             if not loaded:
                 print(color("Session is empty or unreadable.", fg="red"))
                 continue
@@ -921,23 +920,24 @@ def select_session_interactively(
 
 
 def main(argv: List[str]) -> int:
-    ensure_global_config_home()
     # Load environment from a local .env file by default
     load_local_dotenv(Path(__file__).resolve().parent)
 
     args = parse_args(argv)
+    cwd = _resolve_cwd(getattr(args, "cwd", None))
+    file_context, _ = _read_file_context(getattr(args, "files", []) or [], cwd=cwd)
+    if getattr(args, "auto_run", None) is None:
+        auto_run_env = (get_env("NOX_AUTO_RUN") or "").strip().lower()
+        if auto_run_env:
+            args.auto_run = auto_run_env in {"1", "true", "yes", "on"}
+        else:
+            args.auto_run = True
 
     if getattr(args, "version", False):
         print(__version__)
         return 0
 
-    if getattr(args, "setup", False):
-        maybe_run_first_launch_setup(interactive=sys.stdin.isatty(), force=True)
-        return 0
-
     persona = resolve_persona(args.model)
-
-    maybe_run_first_launch_setup(interactive=sys.stdin.isatty())
 
     if getattr(args, "dev", False):
         dev_passphrase = resolve_dev_passphrase()
@@ -980,10 +980,6 @@ def main(argv: List[str]) -> int:
                     )
                 )
 
-    instrument_status_line = describe_instrument_status()
-    instrument_auto_on = instrument_automation_enabled()
-    if interactive:
-        print(color(f"Instruments: {instrument_status_line}", fg="yellow"))
     hardware_info = hardware_summary()
 
     if args.stream is None:
@@ -1048,6 +1044,37 @@ def main(argv: List[str]) -> int:
         return 0
 
     sessions_snapshot = cmd_list_sessions()
+    memory_options_cache: Optional[List[MemoryOption]] = None
+
+    def get_memory_options() -> List[MemoryOption]:
+        nonlocal memory_options_cache
+        if memory_options_cache is None:
+            memory_options_cache = _collect_memory_options(sessions_snapshot)
+        return memory_options_cache
+
+    def resolve_session_path(raw_ident: str) -> Optional[Path]:
+        ident = (raw_ident or "").strip()
+        if not ident:
+            return None
+        options = get_memory_options()
+        memory_option, ident = _split_memory_prefix(ident, options)
+        candidate = Path(ident).expanduser()
+        if candidate.exists():
+            return candidate
+        if memory_option:
+            return cmd_resolve_by_ident_or_index(ident, memory_option.sessions, root=memory_option.root)
+        path = cmd_resolve_by_ident_or_index(ident, sessions_snapshot)
+        if path:
+            return path
+        if ident.isdigit():
+            return None
+        for option in options:
+            if option.key == "noctics":
+                continue
+            path = cmd_resolve_by_ident_or_index(ident, option.sessions, root=option.root)
+            if path:
+                return path
+        return None
     first_run_global = not sessions_snapshot
 
     # Load default system prompt from file if not provided
@@ -1073,8 +1100,11 @@ def main(argv: List[str]) -> int:
 
     if args.system:
         args.system = render_system_prompt(args.system, persona)
+    if file_context and not args.messages_file:
+        args.system = _append_file_context(args.system, file_context)
 
     session_path_to_adopt: Optional[Path] = None
+    loaded_session_context = False
     messages: List[Dict[str, Any]] = []
     if args.messages_file:
         with open(args.messages_file, "r", encoding="utf-8") as f:
@@ -1085,31 +1115,27 @@ def main(argv: List[str]) -> int:
             if isinstance(msg, dict) and msg.get("role") == "system":
                 content = str(msg.get("content") or "")
                 msg["content"] = render_system_prompt(content, persona)
+        if file_context:
+            _apply_file_context_to_messages(messages, file_context=file_context)
     else:
         if args.sessions_load:
-            path: Optional[Path] = None
-            if str(args.sessions_load).isdigit():
-                items = sessions_snapshot
-                idx = int(args.sessions_load)
-                if 1 <= idx <= len(items):
-                    path = Path(items[idx - 1]["path"])  # type: ignore[index]
-            if path is None:
-                candidate = Path(args.sessions_load)
-                if candidate.exists():
-                    path = candidate
-            if path is None:
-                path = cmd_resolve_by_ident_or_index(str(args.sessions_load))
+            path = resolve_session_path(str(args.sessions_load))
             if not path:
                 raise SystemExit(f"--sessions-load: not found: {args.sessions_load}")
-            loaded = load_session_messages(path)
+            loaded = load_session_context(path)
             if loaded:
                 messages = loaded
+                loaded_session_context = True
                 sys_msgs = [m for m in messages if m.get("role") == "system"]
                 if sys_msgs:
                     args.system = sys_msgs[0].get("content")
                     if args.system:
                         args.system = render_system_prompt(str(args.system), persona)
                         sys_msgs[0]["content"] = args.system
+                if file_context:
+                    _apply_file_context_to_messages(messages, file_context=file_context)
+                    sys_msgs = [m for m in messages if m.get("role") == "system"]
+                    args.system = sys_msgs[0].get("content") if sys_msgs else None
             session_path_to_adopt = path
             print(color(f"Loaded session: {path.stem}", fg="yellow"))
         elif interactive and not args.messages_file:
@@ -1120,14 +1146,24 @@ def main(argv: List[str]) -> int:
             if loaded_messages is not None:
                 messages = loaded_messages
                 session_path_to_adopt = chosen_path
+                loaded_session_context = True
                 sys_msgs = [m for m in messages if m.get("role") == "system"]
                 if sys_msgs:
                     args.system = sys_msgs[0].get("content")
                     if args.system:
                         args.system = render_system_prompt(str(args.system), persona)
                         sys_msgs[0]["content"] = args.system
+                if file_context:
+                    _apply_file_context_to_messages(messages, file_context=file_context)
+                    sys_msgs = [m for m in messages if m.get("role") == "system"]
+                    args.system = sys_msgs[0].get("content") if sys_msgs else None
         if not messages and args.system:
             messages.append({"role": "system", "content": args.system})
+
+    context_turns: Optional[int] = None
+    context_messages: Optional[int] = None
+    if loaded_session_context:
+        context_turns, context_messages = _resolve_session_context_limits()
 
     # Determine and display system prompt at startup (colored)
     sys_prompt_text: Optional[str] = None
@@ -1141,14 +1177,7 @@ def main(argv: List[str]) -> int:
 
     # Keep system context minimal for local inference speed.
 
-    instrument_roster = get_instrument_candidates()
     hardware_brief = hardware_info.replace("OS: ", "").split(";")[0].strip()
-    if instrument_roster:
-        roster_display = ", ".join(instrument_roster)
-        automation_display = "ON" if instrument_automation_enabled() else "OFF"
-    else:
-        roster_display = "coming soon"
-        automation_display = "coming soon"
     operator_name = identity.display_name
 
     runtime_meta = {
@@ -1156,16 +1185,29 @@ def main(argv: List[str]) -> int:
         "endpoint": "",
         "model": str(args.model),
         "source": "configured",
+        "runner_path": "",
+        "model_path": "",
     }
 
-    def update_runtime_meta(url: str, model: str, source: str) -> None:
+    def update_runtime_meta(
+        url: str,
+        model: str,
+        source: str,
+        *,
+        runner_path: Optional[str] = None,
+        model_path: Optional[str] = None,
+    ) -> None:
         runtime_label, runtime_endpoint = _describe_runtime_target(url)
         runtime_meta["runtime"] = runtime_label
         runtime_meta["endpoint"] = runtime_endpoint
         runtime_meta["model"] = str(model)
         runtime_meta["source"] = source
+        if runner_path is not None:
+            runtime_meta["runner_path"] = runner_path
+        if model_path is not None:
+            runtime_meta["model_path"] = model_path
 
-    update_runtime_meta(args.url, args.model, "configured")
+    update_runtime_meta(CLI_DEFAULT_URL, args.model, "local runner")
 
     def print_status_block() -> None:
         if not interactive:
@@ -1173,8 +1215,6 @@ def main(argv: List[str]) -> int:
         term_columns = shutil.get_terminal_size(fallback=(80, 24)).columns
         session_info = cmd_list_sessions()
         session_count = len(session_info)
-        roster_text = roster_display or "coming soon"
-
         developer_display = ""
         if getattr(args, "dev", False):
             dev_identity = resolve_developer_identity()
@@ -1189,6 +1229,8 @@ def main(argv: List[str]) -> int:
             "runtime_source": runtime_meta["source"],
             "endpoint": runtime_meta["endpoint"],
             "model": runtime_meta["model"],
+            "runner_path": runtime_meta["runner_path"] or "n/a",
+            "model_path": runtime_meta["model_path"] or "n/a",
             "model_target": persona.model_target,
             "persona_central_name": persona.central_name,
             "persona_central_name_upper": persona.central_name.upper(),
@@ -1197,8 +1239,6 @@ def main(argv: List[str]) -> int:
             "persona_variant_display": persona.variant_display,
             "persona_tagline": persona.tagline,
             "tagline": persona.tagline,
-            "instrument_auto": automation_display,
-            "instrument_roster": roster_text,
             "sessions_saved": str(session_count),
             "developer_display": developer_display,
             "footer": f"{persona.central_name.upper()} · {persona.variant_display}",
@@ -1292,7 +1332,7 @@ def main(argv: List[str]) -> int:
                 client_candidate = ChatClient(
                     url=candidate.url,
                     model=candidate.model,
-                    api_key=candidate.api_key,
+                    api_key=None,
                     temperature=args.temperature,
                     max_tokens=args.max_tokens,
                     stream=bool(args.stream),
@@ -1302,15 +1342,10 @@ def main(argv: List[str]) -> int:
                     strip_reasoning=not bool(args.show_think),
                     memory_user=identity.user_id,
                     memory_user_display=identity.display_name,
+                    context_turns=context_turns,
+                    context_messages=context_messages,
                 )
-                try:
-                    client_candidate.check_connectivity()
-                except Exception:
-                    if not _ensure_local_ollama_serving(candidate.url):
-                        raise
-                    if _bool_env("NOCTICS_AUTO_CREATE_MODEL", default=True):
-                        _ensure_nox_model_available(candidate.url, candidate.model)
-                    client_candidate.check_connectivity(timeout=2.0)
+                client_candidate.check_connectivity()
             except Exception as exc:
                 connection_errors.append((candidate, exc))
                 if client_candidate is not None:
@@ -1326,10 +1361,16 @@ def main(argv: List[str]) -> int:
             client = client_candidate
             persona = client.persona
             current_candidate_index = idx
-            args.url = candidate.url
             args.model = candidate.model
-            args.api_key = candidate.api_key
-            update_runtime_meta(candidate.url, candidate.model, candidate.source)
+            runner_path = getattr(client.transport, "binary", "") or ""
+            model_path = getattr(client.transport, "model_path", "") or ""
+            update_runtime_meta(
+                candidate.url,
+                candidate.model,
+                candidate.source,
+                runner_path=runner_path,
+                model_path=model_path,
+            )
 
             if prior_log_path:
                 try:
@@ -1338,29 +1379,10 @@ def main(argv: List[str]) -> int:
                     pass
             messages = client.messages
 
-            instrument_info = client.describe_target()
-            instrument_name = instrument_info.get("instrument")
-            instrument_warning = instrument_info.get("instrument_warning")
-            status_stream = sys.stdout if interactive else sys.stderr
-            if instrument_warning:
-                print(
-                    color(
-                        f"Instrument unavailable: {instrument_warning}",
-                        fg="yellow",
-                    ),
-                    file=status_stream,
-                )
-            if instrument_name:
-                print(
-                    color(
-                        f"Instrument engaged: {instrument_name}",
-                        fg="yellow",
-                    ),
-                    file=status_stream,
-                )
             if (idx > start_index or show_fallback):
                 label, endpoint = _describe_runtime_target(candidate.url)
-                print(color(f"Runtime fallback engaged: {label} ({endpoint}).", fg="yellow"), file=status_stream)
+                target_stream = sys.stdout if interactive else sys.stderr
+                print(color(f"Runtime fallback engaged: {label} ({endpoint}).", fg="yellow"), file=target_stream)
             return True
 
         return False
@@ -1416,6 +1438,111 @@ def main(argv: List[str]) -> int:
 
     dev_shell_pattern = re.compile(r"\[DEV\s*SHELL\s*COMMAND\](.*?)\[/DEV\s*SHELL\s*COMMAND\]", re.IGNORECASE | re.DOTALL)
     set_title_pattern = re.compile(r"\[SET\s*TITLE\](.*?)\[/SET\s*TITLE\]", re.IGNORECASE | re.DOTALL)
+    auto_run_depth = 0
+
+    def handle_run_blocks(assistant_text: Optional[str]) -> tuple[Optional[str], bool]:
+        nonlocal auto_run_depth
+        if not assistant_text or not getattr(args, "auto_run", False):
+            return assistant_text, False
+        if auto_run_depth >= 1:
+            return assistant_text, False
+        blocks = _extract_instruction_blocks(assistant_text)
+        if not blocks:
+            return assistant_text, False
+
+        cleaned = _strip_instruction_blocks(assistant_text)
+        context_chunks: List[str] = []
+
+        for block in blocks:
+            kind = block.get("kind", "")
+            content = block.get("content", "")
+            if kind == "run":
+                instructions = _parse_run_block(content)
+            elif kind == "cmd":
+                instructions = {
+                    "cmds": [],
+                    "py": [],
+                    "cwd": None,
+                    "env": {},
+                    "use": "context",
+                    "label": None,
+                    "lang": None,
+                }
+                for raw_line in str(content).splitlines():
+                    line = raw_line.strip()
+                    if not line or line.startswith("#"):
+                        continue
+                    instructions["cmds"].append(line)
+            elif kind == "py":
+                instructions = {
+                    "cmds": [],
+                    "py": [],
+                    "cwd": None,
+                    "env": {},
+                    "use": "context",
+                    "label": None,
+                    "lang": "py",
+                }
+                code = str(content).strip("\n")
+                if code.strip():
+                    instructions["py"] = code.splitlines()
+            else:
+                continue
+            use_mode = (instructions.get("use") or "context").lower()
+            if use_mode not in {"context", "print", "both", "none"}:
+                use_mode = "context"
+
+            try:
+                run_cwd = _resolve_run_cwd(instructions.get("cwd"), base=cwd)
+            except RuntimeError as exc:
+                print(color(f"[run] {exc}", fg="red"))
+                continue
+
+            env = _build_run_env(instructions.get("env") or {})
+            label = instructions.get("label")
+            cmds: List[str] = instructions.get("cmds") or []
+            py_lines: List[str] = instructions.get("py") or []
+            lang = (instructions.get("lang") or "").lower()
+
+            results: List[Dict[str, Any]] = []
+            if lang == "py" or py_lines:
+                code = "\n".join(py_lines).strip()
+                if not code:
+                    continue
+                print(color(f"[run] python ({label or 'inline'})", fg="yellow"))
+                results.append(_run_python_block(code, cwd=run_cwd, env=env))
+            else:
+                for cmd in cmds:
+                    if not cmd.strip():
+                        continue
+                    print(color(f"[run] {cmd}", fg="yellow"))
+                    results.append(_run_shell_command(cmd, cwd=run_cwd, env=env))
+
+            if use_mode in {"print", "both", "context"}:
+                for result in results:
+                    formatted = _format_run_result(result, label=label)
+                    print(color("[run output]", fg="yellow", bold=True))
+                    print(formatted)
+
+            if use_mode in {"context", "both"}:
+                for result in results:
+                    context_chunks.append(_format_run_result(result, label=label))
+
+        if not context_chunks:
+            return cleaned or assistant_text, False
+
+        auto_run_depth += 1
+        try:
+            run_context = "[RUN RESULT]\n" + "\n\n".join(context_chunks) + "\n[/RUN RESULT]"
+            previous_stream = client.stream
+            if previous_stream:
+                client.stream = False
+            followup = client.one_turn(run_context)
+        finally:
+            client.stream = previous_stream
+            auto_run_depth -= 1
+
+        return followup, True
 
     def handle_dev_shell_commands(assistant_text: Optional[str]) -> None:
         if not assistant_text or not getattr(args, "dev", False):
@@ -1474,23 +1601,33 @@ def main(argv: List[str]) -> int:
             client.messages[-1]["content"] = cleaned or assistant_text
         return cleaned or assistant_text
 
-    def notify_instrument_needed() -> None:
-        status_line = describe_instrument_status()
-        message = f"Nox requested an external instrument. {status_line}"
-        if instrument_auto_on:
-            message += " Nox will attempt to call the configured instrument automatically when available."
-        else:
-            if not args.instrument and sys.stdin.isatty():
-                chosen = choose_instrument_interactively(args.instrument)
-                if chosen:
-                    args.instrument = chosen
-            message += " Instrument automation is unavailable, so instruments cannot be reached right now. Nox must respond with a local fallback."
-        print(color(message, fg="yellow"))
-
     def one_turn(user_text: str) -> Optional[str]:
         nonlocal client, current_candidate_index
         show_think = bool(args.show_think)
         assistant: Optional[str] = None
+
+        codex_prompt = _extract_codex_prompt(user_text)
+        if codex_prompt is not None:
+            target_stream = sys.stdout if interactive else sys.stderr
+            if not codex_prompt:
+                print(color("Usage: @codex <message>", fg="yellow"), file=target_stream)
+                return None
+            if args.stream:
+                print(f"{CODEX_LABEL}:", end=" ", flush=True)
+            try:
+                assistant = _run_noxdex(codex_prompt, stream=bool(args.stream))
+            except Exception as exc:
+                if args.stream:
+                    print()
+                print(color(f"Codex error: {exc}", fg="red"), file=target_stream)
+                return None
+            if args.stream:
+                print()
+            if not args.stream:
+                print(f"{CODEX_LABEL}: {assistant}")
+            if assistant:
+                client.record_turn(user_text, f"[CODEX]\n{assistant}\n[/CODEX]")
+            return assistant
 
         while True:
             stream_emit = None
@@ -1507,18 +1644,14 @@ def main(argv: List[str]) -> int:
                 if args.stream and stream_finish:
                     stream_finish()
                     print()
-                failing_label, failing_endpoint = _describe_runtime_target(args.url)
+                failing_label, failing_endpoint = _describe_runtime_target(client.url or "")
                 target_stream = sys.stdout if interactive else sys.stderr
                 print(color(f"Runtime error ({failing_label} @ {failing_endpoint}): {exc}", fg="red"), file=target_stream)
-                error_text = str(exc)
-                missing_match = re.search(r"model '([^']+)' not found", error_text)
-                if missing_match:
-                    missing_model = missing_match.group(1)
-                    hint = (
-                        f"Model '{missing_model}' is unavailable at {failing_endpoint}. "
-                        f"Start your runtime and run `ollama pull {missing_model}` (or adjust NOX_LLM_MODEL)."
-                    )
-                    print(color(hint, fg="yellow"), file=target_stream)
+                hint = (
+                    "Ensure bin/runox and assets/models/nox.gguf are present "
+                    "or set NOX_LOCAL_RUNNER/NOX_MODEL_PATH."
+                )
+                print(color(hint, fg="yellow"), file=target_stream)
                 next_index = current_candidate_index + 1 if current_candidate_index >= 0 else 0
                 if not activate_runtime(next_index, show_fallback=True):
                     print(color("Request failed:", fg="red", bold=True), file=target_stream)
@@ -1540,15 +1673,21 @@ def main(argv: List[str]) -> int:
             if stream_finish:
                 stream_finish()
             print()
-            if assistant is not None and ChatClient.wants_instrument(assistant):
-                notify_instrument_needed()
+            assistant, ran_followup = handle_run_blocks(assistant)
             handle_dev_shell_commands(assistant)
             assistant = handle_title_change(assistant)
+            if ran_followup and assistant:
+                display_text = assistant
+                if show_think:
+                    display_text, had_think = _extract_visible_reply(display_text)
+                    if had_think:
+                        print(color("[thinking…]", fg="yellow", bold=True))
+                if display_text:
+                    print(f"{ASSISTANT_LABEL}: {display_text}")
             return assistant
 
         if assistant is not None:
-            if ChatClient.wants_instrument(assistant):
-                notify_instrument_needed()
+            assistant, _ = handle_run_blocks(assistant)
             handle_dev_shell_commands(assistant)
             assistant = handle_title_change(assistant)
             if assistant:
@@ -1633,17 +1772,6 @@ def main(argv: List[str]) -> int:
                     args.system = ident
                 print(color(f"Developer identity set: {new_name}", fg="yellow"))
                 continue
-            if prompt.startswith("/instrument"):
-                parts = prompt.split(maxsplit=1)
-                if len(parts) == 1:
-                    # Clear instrument preference
-                    args.instrument = None
-                    print(color("Instrument cleared. API mode unchanged.", fg="yellow"))
-                else:
-                    args.instrument = parts[1].strip()
-                    print(color(f"Instrument set to '{args.instrument}'.", fg="yellow"))
-                continue
-
             if prompt.startswith("/shell"):
                 if not getattr(args, "dev", False):
                     print(color("/shell is only available in developer mode.", fg="red"))
@@ -1691,17 +1819,6 @@ def main(argv: List[str]) -> int:
                     print(color(f"Prompt label set to: {args.user_name}", fg="yellow"))
                 continue
 
-            if prompt.startswith("/anon"):
-                tokens = prompt.split()
-                if len(tokens) == 1:
-                    args.anon_instrument = not bool(args.anon_instrument)
-                else:
-                    val = tokens[1].lower()
-                    args.anon_instrument = val in {"1", "true", "on", "yes"}
-                state = "ON" if args.anon_instrument else "OFF"
-                print(color(f"Instrument anonymization: {state}", fg="yellow"))
-                continue
-
             if prompt.strip() == "/ls":
                 items = cmd_list_sessions()
                 cmd_print_sessions(items)
@@ -1736,7 +1853,12 @@ def main(argv: List[str]) -> int:
                 if not loaded:
                     continue
                 messages = loaded
+                if file_context:
+                    _apply_file_context_to_messages(messages, file_context=file_context)
                 client.set_messages(messages)
+                context_turns, context_messages = _resolve_session_context_limits()
+                client.context_turns = context_turns
+                client.context_messages = context_messages
                 sys_msgs = [m for m in messages if m.get("role") == "system"]
                 args.system = sys_msgs[0].get("content") if sys_msgs else None
                 # print name by resolving for display
@@ -1771,7 +1893,12 @@ def main(argv: List[str]) -> int:
                 if not loaded:
                     continue
                 messages = loaded
+                if file_context:
+                    _apply_file_context_to_messages(messages, file_context=file_context)
                 client.set_messages(messages)
+                context_turns, context_messages = _resolve_session_context_limits()
+                client.context_turns = context_turns
+                client.context_messages = context_messages
                 sys_msgs = [m for m in messages if m.get("role") == "system"]
                 args.system = sys_msgs[0].get("content") if sys_msgs else None
                 p = cmd_resolve_by_ident_or_index(selection)

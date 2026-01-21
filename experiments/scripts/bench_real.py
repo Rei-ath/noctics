@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-Real-life-ish localrunner benchmark for Termux.
+Real-life-ish runox benchmark for Termux.
 
 Runs a small suite of prompts and reports:
 - TTFT (prefill + first token)
 - generation throughput (tok/s, gen_ms)
 - prefill speed estimate (prompt_tokens / prefill_ms)
 
-This uses `noxpy/localrunner/noxlocal_dp` if present, else `noxlocal`.
+This uses `noxpy/runox/runox_dp` if present, else `runox`.
 """
 
 from __future__ import annotations
@@ -56,19 +56,19 @@ BENCH_RE = re.compile(
 
 def find_runner(prefer_dotprod: bool) -> Path:
     dotprod = [
-        ROOT / "bin" / "noxlocal_dp",
-        ROOT / "noxpy" / "localrunner" / "noxlocal_dp",
+        ROOT / "bin" / "runox_dp",
+        ROOT / "noxpy" / "runox" / "runox_dp",
     ]
     baseline = [
-        ROOT / "bin" / "noxlocal",
-        ROOT / "noxpy" / "localrunner" / "noxlocal",
+        ROOT / "bin" / "runox",
+        ROOT / "noxpy" / "runox" / "runox",
     ]
     cand = dotprod + baseline if prefer_dotprod else baseline + dotprod
     for p in cand:
         if p.exists() and os.access(p, os.X_OK):
             return p
     raise SystemExit(
-        "no localrunner binary found (expected bin/noxlocal[_dp] or noxpy/localrunner/noxlocal[_dp])"
+        "no runox binary found (expected bin/runox[_dp] or noxpy/runox/runox[_dp])"
     )
 
 

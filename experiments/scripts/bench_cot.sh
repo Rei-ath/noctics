@@ -3,10 +3,10 @@ set -eu
 
 ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 
-BIN="$ROOT/bin/noxlocal_dp"
-if [ ! -x "$BIN" ]; then BIN="$ROOT/noxpy/localrunner/noxlocal_dp"; fi
-if [ ! -x "$BIN" ]; then BIN="$ROOT/bin/noxlocal"; fi
-if [ ! -x "$BIN" ]; then BIN="$ROOT/noxpy/localrunner/noxlocal"; fi
+BIN="$ROOT/bin/runox_dp"
+if [ ! -x "$BIN" ]; then BIN="$ROOT/noxpy/runox/runox_dp"; fi
+if [ ! -x "$BIN" ]; then BIN="$ROOT/bin/runox"; fi
+if [ ! -x "$BIN" ]; then BIN="$ROOT/noxpy/runox/runox"; fi
 
 MODEL="$ROOT/nox/obb/nox.gguf"
 THREADS="${NOX_NUM_THREADS:-4}"

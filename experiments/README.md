@@ -10,8 +10,11 @@ Guidelines:
 
 Current buckets:
 - `experiments/neuroutine/` — small controller + fallback experiments.
+- `experiments/runox/` — local runox runner CLI (nox.gguf).
+- `experiments/noxdex/` — Codex CLI bridge (Nox session logging).
 - `experiments/spec_decode/` — speculative decode / switching prototypes.
 - `experiments/noxrs/` — Rust process runner prototype.
 - `experiments/engine/` — Rust orchestrator scaffold.
 - `experiments/zig-infer/` — Zig inference scaffold.
 - `experiments/weights_kernel/` — packed-weight micro-kernel prototype.
+- `experiments/no_kv_cache/` — archived no-KV cache decode experiment.

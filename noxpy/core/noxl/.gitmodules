@@ -1,0 +1,4 @@
+[submodule "core"]
+	path = core
+	url = https://github.com/Rei-ath/noctics-core.git
+	branch = main

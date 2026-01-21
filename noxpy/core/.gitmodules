@@ -1,0 +1,4 @@
+[submodule "noxl"]
+	path = noxl
+	url = https://github.com/Rei-ath/noxl.git
+	branch = main

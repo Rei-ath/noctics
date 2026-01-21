@@ -1,0 +1,8 @@
+# Runtime: stdlib only
+
+# Dev/test tools
+pytest==8.3.3
+pytest-cov==5.0.0
+ruff==0.6.5
+black==24.8.0
+isort==5.13.2

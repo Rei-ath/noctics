@@ -1,0 +1,6 @@
+**/*.pyc
+__pycache__/
+.env
+memory/
+datasets/
+noctics-mirror

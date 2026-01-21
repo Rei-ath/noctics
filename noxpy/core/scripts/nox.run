@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+VENV_DIR="${REPO_ROOT}/.venv"
+if [[ ! -d "${VENV_DIR}" ]]; then
+  python -m venv "${VENV_DIR}"
+fi
+source "${VENV_DIR}/bin/activate"
+
+pip install --quiet --upgrade pip >/dev/null
+pip install --quiet -r "${REPO_ROOT}/requirements.txt" >/dev/null
+
+DEFAULT_MODEL=${MODEL_NAME:-noxllm-05b:latest}
+REQUESTED_MODEL=${NOX_MODEL:-$DEFAULT_MODEL}
+DEFAULT_ENDPOINT="http://127.0.0.1:11434/api/generate"
+NOX_LLM_URL=${NOX_LLM_URL_OVERRIDE:-$DEFAULT_ENDPOINT}
+NOX_LLM_MODEL=${NOX_LLM_MODEL_OVERRIDE:-$REQUESTED_MODEL}
+export NOX_LLM_URL
+export NOX_LLM_MODEL
+
+OLLAMA_REPO_URL=${OLLAMA_REPO_URL:-https://github.com/Rei-ath/ollama-mini.git}
+OLLAMA_ROOT="${REPO_ROOT}/inference"
+DIRECT_OLLAMA_BIN="${OLLAMA_ROOT}/ollama"
+
+ensure_ollama_binary() {
+  if [[ -x "$DIRECT_OLLAMA_BIN" ]]; then
+    OLLAMA_BIN="$DIRECT_OLLAMA_BIN"
+    return
+  fi
+
+  if ! command -v git >/dev/null 2>&1; then
+    echo "error: git is required to fetch the Ollama binary" >&2
+    exit 1
+  fi
+
+  mkdir -p "$OLLAMA_ROOT"
+  local clone_dir="${OLLAMA_ROOT}/ollama-mini"
+  if [[ -d "${clone_dir}/.git" ]]; then
+    git -C "$clone_dir" pull --ff-only --quiet || {
+      echo "warning: failed to update ${clone_dir}; re-cloning" >&2
+      rm -rf "$clone_dir"
+    }
+  fi
+
+  if [[ ! -d "$clone_dir" ]]; then
+    git clone --depth 1 "$OLLAMA_REPO_URL" "$clone_dir" >/dev/null 2>&1 || {
+      echo "error: failed to clone Ollama binary from $OLLAMA_REPO_URL" >&2
+      exit 1
+    }
+  fi
+
+  if [[ ! -f "${clone_dir}/ollama" ]]; then
+    echo "error: cloned repository does not contain an ollama binary" >&2
+    exit 1
+  fi
+
+  cp "${clone_dir}/ollama" "$DIRECT_OLLAMA_BIN"
+  chmod +x "$DIRECT_OLLAMA_BIN"
+  OLLAMA_BIN="$DIRECT_OLLAMA_BIN"
+}
+
+ensure_ollama_binary
+
+export OLLAMA_MODELS="${REPO_ROOT}/models"
+mkdir -p "$OLLAMA_MODELS"
+
+start_ollama() {
+  export OLLAMA_HOST=${OLLAMA_HOST:-127.0.0.1:11434}
+  "$OLLAMA_BIN" serve >/dev/null 2>&1 &
+  SERVER_PID=$!
+  trap 'kill $SERVER_PID >/dev/null 2>&1 || true' EXIT
+
+  for _ in {1..30}; do
+    if curl -sSf "http://${OLLAMA_HOST}/api/version" >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+
+  if ! curl -sSf "http://${OLLAMA_HOST}/api/version" >/dev/null 2>&1; then
+    echo "error: Ollama server did not start" >&2
+    exit 1
+  fi
+
+  ensure_model_available "$NOX_LLM_MODEL"
+}
+
+ensure_model_available() {
+  local model_name="$1"
+  local pull_ref=${NOX_MODEL:-$model_name}
+
+  if "$OLLAMA_BIN" list | awk 'NR>1 {print $1}' | grep -Fxq "$model_name"; then
+    return
+  fi
+
+  if "$OLLAMA_BIN" pull "$pull_ref" >/dev/null; then
+    return
+  fi
+
+  local manifest="$OLLAMA_MODELS/ModelFile"
+  if [[ -f "$manifest" ]]; then
+    echo "Creating model $model_name from $manifest" >&2
+    if "$OLLAMA_BIN" create "$model_name" -f "$manifest"; then
+      return
+    fi
+  fi
+
+  echo "error: unable to retrieve model $model_name" >&2
+  exit 1
+}
+
+start_ollama
+
+echo "Inference endpoint: $NOX_LLM_URL" >&2
+echo "Inference model:    $NOX_LLM_MODEL" >&2
+
+python "${REPO_ROOT}/main.py" --stream --show-think --url "$NOX_LLM_URL" --model "$NOX_LLM_MODEL"

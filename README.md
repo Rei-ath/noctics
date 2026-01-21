@@ -4,6 +4,9 @@ Runox is the local process runner that loads a GGUF model and streams tokens
 over stdout. It is built from the Go sources under `noxpy/runox/` and is used by
 Noctics when a local runner is available.
 
+Terminology: Nox is the model (GGUF), Runox is the inference engine, and Noctics
+is the CLI built on top.
+
 ## Minimal download
 Runox only needs two files at runtime:
 1) the `runox` binary
